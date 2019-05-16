@@ -1,6 +1,7 @@
 ﻿using Grpc.Core;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
+using ProtoBuf.Grpc.Internal;
 using System;
 using System.IO;
 using System.Linq;
@@ -8,7 +9,7 @@ using System.Reflection;
 using System.ServiceModel;
 using System.Threading.Tasks;
 
-namespace ProtoBuf.Grpc
+namespace ProtoBuf.Grpc.Server
 {
     public static class RouteBuilderExtensions
     {
@@ -133,51 +134,6 @@ namespace ProtoBuf.Grpc
                     break;
                 default:
                     throw new NotSupportedException(methodType.ToString());
-            }
-
-        }
-
-        public class FullyNamedMethod<TRequest, TResponse> : Method<TRequest, TResponse>, IMethod
-        {
-            private readonly string _fullName;
-
-            public FullyNamedMethod(
-               string operationName,
-               MethodType type,
-               string serviceName,
-               string methodName,
-               Marshaller<TRequest> requestMarshaller = null,
-               Marshaller<TResponse> responseMarshaller = null)
-               : base(type, serviceName, methodName,
-                     requestMarshaller ?? MarshallerCache<TRequest>.Instance,
-                     responseMarshaller ?? MarshallerCache<TResponse>.Instance)
-            {
-                _fullName = serviceName + "/" + operationName;
-            }
-
-            string IMethod.FullName => _fullName;
-        }
-
-        internal static class MarshallerCache<T>
-        {
-            public static Marshaller<T> Instance { get; }
-                = new Marshaller<T>(Serialize, Deserialize);
-
-            private static T Deserialize(byte[] arg)
-            {
-                using (var ms = new MemoryStream(arg))
-                {
-                    return Serializer.Deserialize<T>(ms);
-                }
-            }
-
-            private static byte[] Serialize(T arg)
-            {
-                using (var ms = new MemoryStream())
-                {
-                    Serializer.Serialize(ms, arg);
-                    return ms.ToArray();
-                }
             }
         }
     }

@@ -33,7 +33,7 @@ namespace Sample.Clients
             var credentials = RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? ChannelCredentials.Insecure : ClientResources.SslCredentials;
             var channel = new Channel("localhost:50051", credentials);
             //var client = new Greeter.GreeterClient(channel);
-            var client = BrainDumpOfIdeas.ClientFactory.CreateClient<BrainDumpOfIdeas.IGreeter>(channel);
+            var client = SharedContract.ClientFactory.CreateClient<SharedContract.IGreeter>(channel);
 
             await UnaryCallExample(client);
 
@@ -50,9 +50,9 @@ namespace Sample.Clients
             var reply = await client.SayHelloAsync(new Greet.HelloRequest { Name = "GreeterClient" });
             Console.WriteLine("Greeting: " + reply.Message);
         }
-        private static async Task UnaryCallExample(BrainDumpOfIdeas.IGreeter client)
+        private static async Task UnaryCallExample(SharedContract.IGreeter client)
         {
-            var reply = await client.SayHello(new BrainDumpOfIdeas.HelloRequest { Name = "GreeterClient" });
+            var reply = await client.SayHello(new SharedContract.HelloRequest { Name = "GreeterClient" });
             Console.WriteLine("Greeting: " + reply.Message);
         }
 
@@ -77,9 +77,9 @@ namespace Sample.Clients
             }
         }
 
-        private static async Task ServerStreamingCallExample(BrainDumpOfIdeas.IGreeter client)
+        private static async Task ServerStreamingCallExample(SharedContract.IGreeter client)
         {
-            var replies = client.SayHellos(new BrainDumpOfIdeas.HelloRequest { Name = "GreeterClient" });
+            var replies = client.SayHellos(new SharedContract.HelloRequest { Name = "GreeterClient" });
             while (await replies.ResponseStream.MoveNext(CancellationToken.None))
             {
                 Console.WriteLine("Greeting: " + replies.ResponseStream.Current.Message);

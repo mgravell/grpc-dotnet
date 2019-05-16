@@ -23,7 +23,7 @@ using Grpc.Core;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using ProtoBuf;
-using ProtoBuf.Grpc;
+using ProtoBuf.Grpc.Server;
 using Server.Interceptors;
 
 namespace GRPCServer
@@ -61,9 +61,9 @@ namespace GRPCServer
             app.UseRouting();
             app.UseEndpoints(endpoints =>
             {
-                endpoints.MapGrpcService<MailerService>();
-                endpoints.MapGrpcService<CounterService>();
-                endpoints.MapGrpcService<GreeterService>();
+                //endpoints.MapGrpcService<MailerService>();
+                //endpoints.MapGrpcService<CounterService>();
+                //endpoints.MapGrpcService<GreeterService>();
                 endpoints.MapGrpcReflectionService();
                 endpoints.MapCodeFirstGrpcService<MyService>();
             });

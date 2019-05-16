@@ -1,0 +1,26 @@
+﻿using Grpc.Core;
+using static ProtoBuf.Grpc.Server.RouteBuilderExtensions;
+
+namespace ProtoBuf.Grpc.Internal
+{
+    public class FullyNamedMethod<TRequest, TResponse> : Method<TRequest, TResponse>, IMethod
+    {
+        private readonly string _fullName;
+
+        public FullyNamedMethod(
+           string operationName,
+           MethodType type,
+           string serviceName,
+           string methodName,
+           Marshaller<TRequest> requestMarshaller = null,
+           Marshaller<TResponse> responseMarshaller = null)
+           : base(type, serviceName, methodName,
+                 requestMarshaller ?? MarshallerCache<TRequest>.Instance,
+                 responseMarshaller ?? MarshallerCache<TResponse>.Instance)
+        {
+            _fullName = serviceName + "/" + operationName;
+        }
+
+        string IMethod.FullName => _fullName;
+    }
+}
