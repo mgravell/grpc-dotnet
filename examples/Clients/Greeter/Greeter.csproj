@@ -17,14 +17,10 @@
 
     <Compile Include="$(MSBuildThisFileDirectory)..\..\Shared\*.cs" />
 
+    <ProjectReference Include="..\..\..\src\Grpc.NetCore.HttpClient\Grpc.NetCore.HttpClient.csproj" />
     <PackageReference Include="Google.Protobuf" Version="$(GoogleProtobufPackageVersion)" />
-    <PackageReference Include="Grpc.Core" Version="$(GrpcCorePackageVersion)" />
-    <PackageReference Include="Grpc.Tools" Version="$(GrpcToolsPackageVersion)" PrivateAssets="All" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <PackageReference Include="Grpc.Tools" Version="$(GrpcPackageVersion)" PrivateAssets="All" />
     <ProjectReference Include="..\..\..\src\protobuf-net.Grpc\protobuf-net.Grpc.csproj" />
     <ProjectReference Include="..\..\Shared\SharedContract\SharedContract.csproj" />
   </ItemGroup>
-  
 </Project>

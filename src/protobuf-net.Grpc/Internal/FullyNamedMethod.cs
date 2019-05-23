@@ -12,8 +12,8 @@ namespace ProtoBuf.Grpc.Internal
            MethodType type,
            string serviceName,
            string methodName,
-           Marshaller<TRequest> requestMarshaller = null,
-           Marshaller<TResponse> responseMarshaller = null)
+           Marshaller<TRequest>? requestMarshaller = null,
+           Marshaller<TResponse>? responseMarshaller = null)
            : base(type, serviceName, methodName,
                  requestMarshaller ?? MarshallerCache<TRequest>.Instance,
                  responseMarshaller ?? MarshallerCache<TResponse>.Instance)

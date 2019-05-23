@@ -7,7 +7,7 @@ namespace protobuf_net.Grpc
     public readonly struct CallContext
     {
         public CallOptions? Client => Server == null ? _client : default;
-        public ServerCallContext Server { get; }
+        public ServerCallContext? Server { get; }
 
         public Metadata RequestHeaders => Server == null ? _client.Headers : Server.RequestHeaders;
         public CancellationToken CancellationToken => Server == null ? _client.CancellationToken : Server.CancellationToken;

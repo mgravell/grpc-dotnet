@@ -29,20 +29,20 @@ namespace ProtoBuf.Grpc.Server
             var serviceName = sva?.Name;
             if (string.IsNullOrWhiteSpace(serviceName)) serviceName = svcType.FullName.Replace('+', '.');
 
-            object[] argsBuffer = null;
-            Type[] typesBuffer = null;
+            object?[]? argsBuffer = null;
+            Type?[]? typesBuffer = null;
             void AddMethod(Type @in, Type @out, MethodInfo m, MethodType t)
             {
                 if (typesBuffer == null)
                 {
-                    typesBuffer = new Type[] { typeof(TService), null, null };
+                    typesBuffer = new Type?[] { typeof(TService), null, null };
                 }
                 typesBuffer[1] = @in;
                 typesBuffer[2] = @out;
 
                 if (argsBuffer == null)
                 {
-                    argsBuffer = new object[] { serviceName, null, null, binder, service };
+                    argsBuffer = new object?[] { serviceName, null, null, binder, service };
                 }
                 argsBuffer[1] = m;
                 argsBuffer[2] = t;
@@ -115,22 +115,22 @@ namespace ProtoBuf.Grpc.Server
                 case MethodType.Unary:
                     binder.AddMethod(new FullyNamedMethod<TRequest, TResponse>(
                         operationName, methodType, serviceName, method.Name),
-                        (UnaryServerMethod<TRequest, TResponse>)null);
+                        (UnaryServerMethod<TRequest, TResponse>?)null);
                     break;
                 case MethodType.ClientStreaming:
                     binder.AddMethod(new FullyNamedMethod<TRequest, TResponse>(
                         operationName, methodType, serviceName, method.Name),
-                        (ClientStreamingServerMethod<TRequest, TResponse>)null);
+                        (ClientStreamingServerMethod<TRequest, TResponse>?)null);
                     break;
                 case MethodType.ServerStreaming:
                     binder.AddMethod(new FullyNamedMethod<TRequest, TResponse>(
                         operationName, methodType, serviceName, method.Name),
-                        (ServerStreamingServerMethod<TRequest, TResponse>)null);
+                        (ServerStreamingServerMethod<TRequest, TResponse>?)null);
                     break;
                 case MethodType.DuplexStreaming:
                     binder.AddMethod(new FullyNamedMethod<TRequest, TResponse>(
                         operationName, methodType, serviceName, method.Name),
-                        (DuplexStreamingServerMethod<TRequest, TResponse>)null);
+                        (DuplexStreamingServerMethod<TRequest, TResponse>?)null);
                     break;
                 default:
                     throw new NotSupportedException(methodType.ToString());

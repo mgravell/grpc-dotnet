@@ -17,7 +17,6 @@
 #endregion
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Microsoft.AspNetCore.Http;
@@ -32,54 +31,63 @@ namespace Grpc.AspNetCore.Server.Internal.CallHandlers
         where TService : class
     {
         private readonly DuplexStreamingServerMethod<TService, TRequest, TResponse> _invoker;
-        private static readonly Func<InterceptorRegistration, DuplexStreamingServerMethod<TRequest, TResponse>, DuplexStreamingServerMethod<TRequest, TResponse>> BuildInvoker = (interceptorRegistration, next) =>
-        {
-            return async (requestStream, responseStream, context) =>
-            {
-                var interceptorActivator = (IGrpcInterceptorActivator)context.GetHttpContext().RequestServices.GetRequiredService(interceptorRegistration.ActivatorType);
-                var interceptorInstance = interceptorActivator.Create(interceptorRegistration.Args);
-
-                if (interceptorInstance == null)
-                {
-                    throw new InvalidOperationException($"Could not construct Interceptor instance for type {interceptorRegistration.Type.FullName}");
-                }
-
-                try
-                {
-                    await interceptorInstance.DuplexStreamingServerHandler(requestStream, responseStream, context, next);
-                }
-                finally
-                {
-                    interceptorActivator.Release(interceptorInstance);
-                }
-            };
-        };
+        private readonly DuplexStreamingServerMethod<TRequest, TResponse>? _pipelineInvoker;
 
         public DuplexStreamingServerCallHandler(
-            Method<TRequest, TResponse> method, 
-            DuplexStreamingServerMethod<TService, TRequest, TResponse> invoker, 
-            GrpcServiceOptions serviceOptions, 
-            ILoggerFactory loggerFactory) 
+            Method<TRequest, TResponse> method,
+            DuplexStreamingServerMethod<TService, TRequest, TResponse> invoker,
+            GrpcServiceOptions serviceOptions,
+            ILoggerFactory loggerFactory)
             : base(method, serviceOptions, loggerFactory)
         {
             _invoker = invoker;
+
+            if (!ServiceOptions.Interceptors.IsEmpty)
+            {
+                DuplexStreamingServerMethod<TRequest, TResponse> resolvedInvoker = async (requestStream, responseStream, resolvedContext) =>
+                {
+                    var activator = resolvedContext.GetHttpContext().RequestServices.GetRequiredService<IGrpcServiceActivator<TService>>();
+                    TService? service = null;
+                    try
+                    {
+                        service = activator.Create();
+                        await _invoker(
+                            service,
+                            requestStream,
+                            responseStream,
+                            resolvedContext);
+                    }
+                    finally
+                    {
+                        if (service != null)
+                        {
+                            activator.Release(service);
+                        }
+                    }
+                };
+
+                var interceptorPipeline = new InterceptorPipelineBuilder<TRequest, TResponse>(ServiceOptions.Interceptors);
+                _pipelineInvoker = interceptorPipeline.DuplexStreamingPipeline(resolvedInvoker);
+            }
         }
 
         protected override async Task HandleCallAsyncCore(HttpContext httpContext)
         {
+            // Disable request body data rate for client streaming
+            DisableMinRequestBodyDataRate(httpContext);
+
             var serverCallContext = CreateServerCallContext(httpContext);
 
             GrpcProtocolHelpers.AddProtocolHeaders(httpContext.Response);
-
-            var activator = httpContext.RequestServices.GetRequiredService<IGrpcServiceActivator<TService>>();
-            TService service = null;
 
             try
             {
                 serverCallContext.Initialize();
 
-                if (ServiceOptions.Interceptors.IsEmpty)
+                if (_pipelineInvoker == null)
                 {
+                    var activator = httpContext.RequestServices.GetRequiredService<IGrpcServiceActivator<TService>>();
+                    TService? service = null;
                     try
                     {
                         service = activator.Create();
@@ -99,33 +107,7 @@ namespace Grpc.AspNetCore.Server.Internal.CallHandlers
                 }
                 else
                 {
-                    DuplexStreamingServerMethod<TRequest, TResponse> resolvedInvoker = async (requestStream, responseStream, resolvedContext) =>
-                    {
-                        try
-                        {
-                            service = activator.Create();
-                            await _invoker(
-                                service,
-                                requestStream,
-                                responseStream,
-                                resolvedContext);
-                        }
-                        finally
-                        {
-                            if (service != null)
-                            {
-                                activator.Release(service);
-                            }
-                        }
-                    };
-
-                    // The list is reversed during construction so the first interceptor is built last and invoked first
-                    for (var i = ServiceOptions.Interceptors.Count - 1; i >= 0; i--)
-                    {
-                        resolvedInvoker = BuildInvoker(ServiceOptions.Interceptors[i], resolvedInvoker);
-                    }
-
-                    await resolvedInvoker(
+                    await _pipelineInvoker(
                         new HttpContextStreamReader<TRequest>(serverCallContext, Method.RequestMarshaller.Deserializer),
                         new HttpContextStreamWriter<TResponse>(serverCallContext, Method.ResponseMarshaller.Serializer),
                         serverCallContext);

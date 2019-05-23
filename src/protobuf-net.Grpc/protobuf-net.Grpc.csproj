@@ -7,8 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Grpc.Core.Api" Version="$(GrpcCorePackageVersion)" />
-    <PackageReference Include="Grpc.Core" Version="$(GrpcCorePackageVersion)" />
+    <PackageReference Include="Grpc.Core.Api" Version="$(GrpcPackageVersion)" />
+    <PackageReference Include="Grpc.Core" Version="$(GrpcPackageVersion)" />
     <PackageReference Include="protobuf-net" Version="2.4.0" />
   </ItemGroup>
   <ItemGroup>
