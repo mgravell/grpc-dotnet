@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.ServiceModel;
 using System.Threading.Tasks;
+using System.Buffers;
 
 namespace ProtoBuf.Grpc.Server
 {
@@ -43,6 +44,45 @@ namespace ProtoBuf.Grpc.Server
                 {
                     AddMethodsForService(context, iType);
                 }
+            }
+
+            // do **not** replace these with a `params` etc version; the point here is to be as cheap
+            // as possible for misses
+            private static bool IsMatch(Type returnType, ParameterInfo[] parameters, Type?[] types, Type? tRet)
+                => parameters.Length == 0
+                && IsMatch(tRet, returnType, out types[0]);
+            private static bool IsMatch(Type returnType, ParameterInfo[] parameters, Type?[] types, Type? t0, Type? tRet)
+                => parameters.Length == 1
+                && IsMatch(t0, parameters[0].ParameterType, out types[0])
+                && IsMatch(tRet, returnType, out types[1]);
+            private static bool IsMatch(Type returnType, ParameterInfo[] parameters, Type?[] types, Type? t0, Type? t1, Type? tRet)
+                => parameters.Length == 2
+                && IsMatch(t0, parameters[0].ParameterType, out types[0])
+                && IsMatch(t1, parameters[1].ParameterType, out types[1])
+                && IsMatch(tRet, returnType, out types[2]);
+            private static bool IsMatch(Type returnType, ParameterInfo[] parameters, Type?[] types, Type? t0, Type? t1, Type? t2, Type? tRet)
+                => parameters.Length == 3
+                && IsMatch(t0, parameters[0].ParameterType, out types[0])
+                && IsMatch(t1, parameters[1].ParameterType, out types[1])
+                && IsMatch(t2, parameters[2].ParameterType, out types[2])
+                && IsMatch(tRet, returnType, out types[3]);
+
+            private static bool IsMatch(in Type? template, in Type actual, out Type result)
+            {
+                if (template == null || template == actual)
+                {
+                    result = actual;
+                    return true;
+                } // fine
+                if (actual.IsGenericType && template.IsGenericTypeDefinition
+                    && actual.GetGenericTypeDefinition() == template)
+                {
+                    // expected Foo<>, got Foo<T>: report T
+                    result = actual.GetGenericArguments()[0];
+                    return true;
+                }
+                result = typeof(void);
+                return false;
             }
 
             private void AddMethodsForService(ServiceMethodProviderContext<TService> context, Type serviceContract)
@@ -85,96 +125,56 @@ namespace ProtoBuf.Grpc.Server
 
                 foreach (var method in serviceContract.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
                 {
+                    if (method.IsGenericMethodDefinition) continue; // no generics - what T would we use?
+
+                    Type[] types = ArrayPool<Type>.Shared.Rent(8);
                     try
                     {
                         if (isPublicContract && !Attribute.IsDefined(method, typeof(OperationContractAttribute)))
                             continue; // for methods on the class (not a service contract interface): demand [OperationContract]
 
-                        var outType = method.ReturnType;
-                        if (outType == null) continue;
-
                         bool bound = false;
+                        var outType = method.ReturnType;
                         var args = method.GetParameters();
-                        if (args.Length == 1)
+
+                        // IsMatch takes a signature which may contain wildcards for parameters
+                        // and the return type; it validates the signature, and fills in the actual
+                        // types (resolving generic types down to their T etc) into the buffer "types"
+                        if (IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(ServerCallContext), null)) // Foo(reader, ctx) => *
                         {
-                            if (outType.IsGenericType && outType.GetGenericTypeDefinition() == typeof(Task<>))
-                            {
-                                outType = outType.GetGenericArguments().Single();
-                                var inType = args[0].ParameterType;
-                                if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
-                                {   // Task<TResponse> ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream);
-                                    // we will create: (svc, req, ctx) => svc.TheMethod(req)
-                                    bound = AddMethod(inType.GetGenericArguments().Single(), outType, method, MethodType.ClientStreaming,
-                                        args => Expression.Call(args[0], method, args[1]));
-                                }
-                                else
-                                {   // Task<TResponse> UnaryServerMethod(TRequest request);
-                                    // we will create: (svc, req, ctx) => svc.TheMethod(req)
-                                    bound = AddMethod(inType, outType, method, MethodType.Unary,
-                                        args => Expression.Call(args[0], method, args[1]));
-                                }
-                            }
-                            else
-                            {
-                                var inType = args[0].ParameterType;
-                                if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
-                                {   // TResponse ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream);
-                                    // not handled: IAsyncStreamReader is inherently async
-                                }
-                                else
-                                {   // TResponse UnaryServerMethod(TRequest request);
-                                    // we will create: (svc, req, ctx) => Task.FromResult(svc.TheMethod(req))
-                                    bound = AddMethod(inType, outType, method, MethodType.Unary,
-                                        args => Expression.Call(typeof(Task), nameof(Task.FromResult), new[] { method.ReturnType },
-                                            Expression.Call(args[0], method, args[1])));
-                                }
-                            }
+                            bound = AddMethod(types[0], types[1], method, MethodType.ClientStreaming);
                         }
-                        else if (args.Length == 2 && args[1].ParameterType == typeof(ServerCallContext))
+                        else if (IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), null)) // Foo(reader) => *
                         {
-                            if (outType.IsGenericType && outType.GetGenericTypeDefinition() == typeof(Task<>))
-                            {
-                                outType = outType.GetGenericArguments().Single();
-                                var inType = args[0].ParameterType;
-                                if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
-                                {   // Task<TResponse> ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream, ServerCallContext serverCallContext);
-                                    bound = AddMethod(inType.GetGenericArguments().Single(), outType, method, MethodType.ClientStreaming);
-                                }
-                                else
-                                {   // Task<TResponse> UnaryServerMethod(TRequest request, ServerCallContext serverCallContext);
-                                    bound = AddMethod(inType, outType, method, MethodType.Unary);
-                                }
-                            }
-                            else
-                            {
-                                var inType = args[0].ParameterType;
-                                if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
-                                {   // TResponse ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream, ServerCallContext serverCallContext);
-                                    // not handled: IAsyncStreamReader is inherently async
-                                }
-                                else
-                                {   // TResponse UnaryServerMethod(TRequest request, ServerCallContext serverCallContext);
-                                    // we will create: (svc, req, ctx) => Task.FromResult(svc.TheMethod(req, ctx))
-                                    bound = AddMethod(inType, outType, method, MethodType.Unary,
-                                        args => Expression.Call(typeof(Task), nameof(Task.FromResult), new[] { method.ReturnType },
-                                            Expression.Call(args[0], method, args[1], args[2])));
-                                }
-                            }
+                            bound = AddMethod(types[0], types[1], method, MethodType.ClientStreaming,
+                                args => Expression.Call(args[0], method, args[1]));
                         }
-                        else if (args.Length == 3 && args[2].ParameterType == typeof(ServerCallContext) && outType == typeof(Task)
-                            && args[1].ParameterType.IsGenericType
-                            && args[1].ParameterType.GetGenericTypeDefinition() == typeof(IServerStreamWriter<>))
+                        else if (IsMatch(outType, args, types, null, typeof(ServerCallContext), null)) // Foo(*, ctx) => *
                         {
-                            outType = args[1].ParameterType.GetGenericArguments().Single();
-                            var inType = args[0].ParameterType;
-                            if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
-                            {   // Task DuplexStreamingServerMethod(IAsyncStreamReader<TRequest> input, IServerStreamWriter<TResponse> output, ServerCallContext serverCallContext);
-                                bound = AddMethod(inType.GetGenericArguments().Single(), outType, method, MethodType.DuplexStreaming);
-                            }
-                            else
-                            {   // Task ServerStreamingServerMethod(TRequest request, IServerStreamWriter<TResponse> stream, ServerCallContext serverCallContext);
-                                bound = AddMethod(inType, outType, method, MethodType.ServerStreaming);
-                            }
+                            bound = AddMethod(types[0], types[1], method, MethodType.Unary);
+                        }
+                        else if (IsMatch(outType, args, types, null, null)) // Foo(*) => *
+                        {
+                            bound = AddMethod(types[0], types[1], method, MethodType.Unary,
+                                args => Expression.Call(args[0], method, args[1]));
+                        }
+                        else if (IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(IServerStreamWriter<>), typeof(ServerCallContext), null)) // Foo(reader, writer, ctx) => *
+                        {
+                            bound = AddMethod(types[0], types[1], method, MethodType.DuplexStreaming);
+                        }
+                        else if (IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(IServerStreamWriter<>), null)) // Foo(reader, writer) => *
+                        {
+                            bound = AddMethod(types[0], types[1], method, MethodType.DuplexStreaming,
+                                args => Expression.Call(args[0], method, args[1], args[2]));
+                        }
+                        else if (IsMatch(outType, args, types, null, typeof(IServerStreamWriter<>), typeof(ServerCallContext), null)) // Foo(*, writer, ctx) => *
+                        {
+                            bound = AddMethod(types[0], types[1], method, MethodType.ServerStreaming);
+                        }
+                        else if (IsMatch(outType, args, types, null, typeof(IServerStreamWriter<>), null)) // Foo(*, writer) => *
+                        {
+                            bound = AddMethod(types[0], types[1], method, MethodType.ServerStreaming,
+                                args => Expression.Call(args[0], method, args[1], args[2]));
                         }
                         if (bound)
                         {
@@ -184,6 +184,10 @@ namespace ProtoBuf.Grpc.Server
                     catch (Exception ex)
                     {
                         _logger.Log(LogLevel.Error, "Unable to bind {0}.{1}: {2}", serviceContract.Name, method.Name, ex.Message);
+                    }
+                    finally
+                    {
+                        ArrayPool<Type?>.Shared.Return(types);
                     }
                 }
             }
@@ -221,12 +225,34 @@ namespace ProtoBuf.Grpc.Server
             TDelegate As<TDelegate>() where TDelegate : Delegate
             {
                 // basic - direct call
-                if (invoker == null) return (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), null, method);
+                var finalSignature = AssertNotNull(typeof(TDelegate).GetMethod("Invoke"));
 
-                var methodParameters = typeof(TDelegate).GetMethod("Invoke")?.GetParameters() ?? Array.Empty<ParameterInfo>();
+                if (invoker == null && method.ReturnType == finalSignature.ReturnType) return (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), null, method);
+
+                var methodParameters = finalSignature.GetParameters();
                 var lambdaParameters = Array.ConvertAll(methodParameters, p => Expression.Parameter(p.ParameterType, p.Name));
-                return Expression.Lambda<TDelegate>(invoker(lambdaParameters), lambdaParameters).Compile();
+                var body = invoker?.Invoke(lambdaParameters) ?? Expression.Call(lambdaParameters[0], method, lambdaParameters.Skip(1));
 
+                if (body.Type != finalSignature.ReturnType)
+                {
+                    if (finalSignature.ReturnType.IsGenericType && finalSignature.ReturnType.GetGenericTypeDefinition() == typeof(Task<>))
+                    {
+                        // gRPC expects a Task<T>, and that isn't what we are returning; fake it
+
+                        // is it a ValueTask<T>?
+                        if (body.Type.IsGenericType && body.Type.GetGenericTypeDefinition() == typeof(ValueTask<>))
+                        {   // foo.AsTask()
+                            body = Expression.Call(body, "AsTask", null);
+                        }
+                        else
+                        {   // Task.FromResult(foo)
+                            body = Expression.Call(typeof(Task), nameof(Task.FromResult), finalSignature.ReturnType.GetGenericArguments(), body);
+                        }
+                    }
+                }
+                var lambda = Expression.Lambda<TDelegate>(body, lambdaParameters);
+                logger.Log(LogLevel.Warning, "mapped {0} via {1}", operationName, lambda);
+                return lambda.Compile();
             }
 
 #pragma warning disable CS8625
