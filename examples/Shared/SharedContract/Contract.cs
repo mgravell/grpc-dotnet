@@ -31,6 +31,6 @@ namespace SharedContract
     {
         // this is the inital version that assumes same client API as google
         AsyncUnaryCall<HelloReply> SayHello(HelloRequest request, CallOptions options = default);
-        AsyncServerStreamingCall<HelloReply> SayHellos(HelloRequest request, CallOptions options = default);
+        //AsyncServerStreamingCall<HelloReply> SayHellos(HelloRequest request, CallOptions options = default);
     }
 }

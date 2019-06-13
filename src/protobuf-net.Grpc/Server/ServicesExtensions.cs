@@ -192,11 +192,9 @@ namespace ProtoBuf.Grpc.Server
                 }
             }
         }
-        private static T AssertNotNull<T>(T? input, [CallerMemberName] string? caller = null) where T : class
-            => input ?? throw new InvalidOperationException("Invalid null from " + caller);
 
-        private static readonly MethodInfo s_addMethod = AssertNotNull(typeof(ServicesExtensions).GetMethod(
-           nameof(AddMethod), BindingFlags.Static | BindingFlags.NonPublic));
+        private static readonly MethodInfo s_addMethod = typeof(ServicesExtensions).GetMethod(
+           nameof(AddMethod), BindingFlags.Static | BindingFlags.NonPublic)!;
 
         private static void AddMethod<TService, TRequest, TResponse>(
             string serviceName, MethodInfo method, MethodType methodType,
@@ -225,7 +223,7 @@ namespace ProtoBuf.Grpc.Server
             TDelegate As<TDelegate>() where TDelegate : Delegate
             {
                 // basic - direct call
-                var finalSignature = AssertNotNull(typeof(TDelegate).GetMethod("Invoke"));
+                var finalSignature = typeof(TDelegate).GetMethod("Invoke")!;
 
                 if (invoker == null && method.ReturnType == finalSignature.ReturnType) return (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), null, method);
 

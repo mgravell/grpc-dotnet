@@ -13,5 +13,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Grpc.AspNetCore.Server\Grpc.AspNetCore.Server.csproj" />
+    <ProjectReference Include="..\Grpc.Net.Client\Grpc.Net.Client.csproj" />
   </ItemGroup>
 </Project>

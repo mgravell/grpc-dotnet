@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Common;
 using Grpc.Core;
 using Grpc.Net.Client;
+using ProtoBuf.Grpc.Client;
 
 namespace Sample.Clients
 {
@@ -30,12 +31,15 @@ namespace Sample.Clients
         static async Task Main(string[] args)
         {
             var httpClient = ClientResources.CreateHttpClient("localhost:50051");
-            var client = GrpcClient.Create<Greet.Greeter.GreeterClient>(httpClient);
-            // var client = SharedContract.ClientFactory.CreateClient<SharedContract.IGreeter>(channel);
+            //var client = GrpcClient.Create<Greet.Greeter.GreeterClient>(httpClient);
+            //var client = ClientFactory.CreateService<SharedContract.ManualGreeterClient, SharedContract.IGreeter>(httpClient);
+            var client = ClientFactory.Create<SharedContract.IGreeter>(httpClient);
+            Console.WriteLine($"client: {client.GetType().FullName}");
+            Console.WriteLine("Connecting...");
 
             await UnaryCallExample(client);
 
-            await ServerStreamingCallExample(client);
+            // await ServerStreamingCallExample(client);
 
             Console.WriteLine("Shutting down");
             Console.WriteLine("Press any key to exit...");
@@ -74,13 +78,13 @@ namespace Sample.Clients
             }
         }
 
-        private static async Task ServerStreamingCallExample(SharedContract.IGreeter client)
-        {
-            var replies = client.SayHellos(new SharedContract.HelloRequest { Name = "GreeterClient" });
-            while (await replies.ResponseStream.MoveNext(CancellationToken.None))
-            {
-                Console.WriteLine("Greeting: " + replies.ResponseStream.Current.Message);
-            }
-        }
+        //private static async Task ServerStreamingCallExample(SharedContract.IGreeter client)
+        //{
+        //    var replies = client.SayHellos(new SharedContract.HelloRequest { Name = "GreeterClient" });
+        //    while (await replies.ResponseStream.MoveNext(CancellationToken.None))
+        //    {
+        //        Console.WriteLine("Greeting: " + replies.ResponseStream.Current.Message);
+        //    }
+        //}
     }
 }
