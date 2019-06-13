@@ -16,24 +16,18 @@
 
 #endregion
 
-using System;
-using System.ServiceModel;
-using System.Threading.Tasks;
-using Grpc.Core;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Count;
 using Greet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using ProtoBuf;
-using ProtoBuf.Grpc.Server;
 using Microsoft.IdentityModel.Tokens;
+using ProtoBuf.Grpc.Server;
 using Server.Interceptors;
-using Microsoft.Extensions.Logging;
-using Server.Services;
+using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
 namespace GRPCServer
 {
@@ -121,7 +115,7 @@ namespace GRPCServer
                 endpoints.MapGrpcService<MailerService>();
                 endpoints.MapGrpcService<CounterService>();
                 // endpoints.MapGrpcService<GreeterService>();
-                endpoints.MapGrpcService<CodeFirstGreeterService>();
+                endpoints.MapGrpcService<Server.CodeFirstGreeterService.MyService>();
                 endpoints.MapGrpcService<TicketerService>();
                 endpoints.MapGrpcService<CertifierService>();
                 endpoints.MapGrpcService<AggregatorService>();

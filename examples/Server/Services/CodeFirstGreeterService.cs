@@ -4,7 +4,7 @@ using ProtoBuf;
 using System.ServiceModel;
 using System.Threading.Tasks;
 
-namespace Server.Services
+namespace Server.CodeFirstGreeterService
 {
     [ServiceContract(Name = "Greet.Greeter")]
     interface IGreeterService
@@ -14,14 +14,14 @@ namespace Server.Services
     }
 
     [ServiceContract(Name = "Greet.Greeter")]
-    class CodeFirstGreeterService : IGreeterService
+    class MyService : IGreeterService
     {
 
-        private readonly ILogger<CodeFirstGreeterService> _logger;
+        private readonly ILogger<MyService> _logger;
 
-        public CodeFirstGreeterService(ILoggerFactory loggerFactory)
+        public MyService(ILoggerFactory loggerFactory)
         {
-            _logger = loggerFactory.CreateLogger<CodeFirstGreeterService>();
+            _logger = loggerFactory.CreateLogger<MyService>();
         }
 
         HelloReply IGreeterService.SayHello(HelloRequest request)
@@ -48,18 +48,17 @@ namespace Server.Services
                 await Task.Delay(1000);
             }
         }
-
-        [ProtoContract]
-        public class HelloRequest
-        {
-            [ProtoMember(1)]
-            public string? Name { get; set; }
-        }
-        [ProtoContract]
-        public class HelloReply
-        {
-            [ProtoMember(1)]
-            public string? Message { get; set; }
-        }
+    }
+    [ProtoContract]
+    public class HelloRequest
+    {
+        [ProtoMember(1)]
+        public string? Name { get; set; }
+    }
+    [ProtoContract]
+    public class HelloReply
+    {
+        [ProtoMember(1)]
+        public string? Message { get; set; }
     }
 }
