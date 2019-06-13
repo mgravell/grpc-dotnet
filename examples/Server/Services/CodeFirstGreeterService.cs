@@ -15,18 +15,6 @@ namespace Server.Services
     [ServiceContract(Name = "Greet.Greeter")]
     class CodeFirstGreeterService : IGreeterService // (otherwise, the type's full name is used, i.e. {namespace}.{typename})
     {
-        // note: currently only very specific API signatures are supported, as it needs to match
-        // the signature that the underlying google API uses; a +1 feature would be to support
-        // alternative signatures, for example:
-        // a) ValueTask<HelloReply> SayHelloAsync(HelloRequest request) - ValueTask and no context
-        // b) HelloReply SayHelloAsync(ServerCallContext context) - sync and no context
-        // c) IAsyncEnumerable<HelloReply> SayHellosAsync(HelloRequest request, ServerCallContext context) - IAsyncEnumerable<T>
-        // (or is it Channel<T> ?)
-
-        // The tool would generate the corresponding proxy server/client wrapper to make the magic happens
-        // In particular, the intention here is that the API *could* be identical between server and client
-        // (although that is not a hard requirement or expectation)
-        // 
 
         private readonly ILogger<CodeFirstGreeterService> _logger;
 
@@ -35,16 +23,10 @@ namespace Server.Services
             _logger = loggerFactory.CreateLogger<CodeFirstGreeterService>();
         }
 
-        //public Task<HelloReply> SayHelloAsync(HelloRequest request, ServerCallContext _)
-        //{
-        //    _logger.LogInformation($"Sending hello to {request.Name}");
-        //    return Task.FromResult(new HelloReply { Message = "Hello " + request.Name });
-        //}
-
         HelloReply IGreeterService.SayHello(HelloRequest request, ServerCallContext _)
         {
-            _logger.LogInformation($"Sending **sync** hello to {request.Name}");
-            return new HelloReply { Message = "Hello (explicit interface impl) " + request.Name };
+            _logger.LogInformation($"Sending hello to {request.Name}");
+            return new HelloReply { Message = "Hello (sync/explicit interface impl) " + request.Name };
         }
 
         [OperationContract]
