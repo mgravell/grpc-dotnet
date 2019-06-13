@@ -1,5 +1,4 @@
 ﻿using Grpc.Core;
-using static ProtoBuf.Grpc.Server.RouteBuilderExtensions;
 
 namespace ProtoBuf.Grpc.Internal
 {

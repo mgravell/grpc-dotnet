@@ -17,13 +17,13 @@
 #endregion
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.AspNetCore.Server.Internal;
-using Grpc.AspNetCore.Server.Tests.Infrastructure;
 using Grpc.Core;
 using Grpc.Tests.Shared;
 using Microsoft.AspNetCore.Http;
@@ -32,7 +32,6 @@ using Microsoft.AspNetCore.Http.Internal;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
-using Microsoft.Net.Http.Headers;
 using NUnit.Framework;
 
 namespace Grpc.AspNetCore.Server.Tests
@@ -531,9 +530,99 @@ namespace Grpc.AspNetCore.Server.Tests
             Assert.AreEqual(addedToRequestHeaders, headerAdded);
         }
 
+        [Test]
+        public async Task Dispose_LongRunningDeadlineAbort_WaitsUntilDeadlineAbortIsFinished()
+        {
+            // Arrange
+            var blockingLifeTimeFeature = new TestBlockingHttpRequestLifetimeFeature();
+
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Headers[GrpcProtocolConstants.TimeoutHeader] = "100n";
+            httpContext.Features.Set<IHttpRequestLifetimeFeature>(blockingLifeTimeFeature);
+
+            var testSink = new TestSink();
+            var testLogger = new TestLogger(string.Empty, testSink, true);
+
+            var serverCallContext = CreateServerCallContext(httpContext, testLogger);
+            serverCallContext.Initialize();
+
+            // Wait until we're inside the deadline method and the lock has been taken
+            while (true)
+            {
+                if (testSink.Writes.Any(w => w.EventId.Name == "DeadlineExceeded"))
+                {
+                    break;
+                }
+            }
+
+            // Act
+            var disposeTask = Task.Run(() => serverCallContext.Dispose());
+
+            // Assert
+            if (await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(0.2))) == disposeTask)
+            {
+                Assert.Fail("Dispose did not wait on lock taken by deadline cancellation.");
+            }
+
+            Assert.IsFalse(serverCallContext._disposed);
+
+            // Wait for dispose to finish
+            blockingLifeTimeFeature.CancelBlocking();
+            await disposeTask.DefaultTimeout();
+
+            Assert.IsTrue(serverCallContext._disposed);
+        }
+
+        [Test]
+        public void DeadlineTimer_ExecutedAfterDispose_RequestNotAborted()
+        {
+            // Arrange
+            var lifetimeFeature = new TestHttpRequestLifetimeFeature();
+
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Headers[GrpcProtocolConstants.TimeoutHeader] = "1H";
+            httpContext.Features.Set<IHttpRequestLifetimeFeature>(lifetimeFeature);
+
+            var serverCallContext = CreateServerCallContext(httpContext);
+            serverCallContext.Initialize();
+            serverCallContext.Dispose();
+
+            // Act
+            serverCallContext.DeadlineExceeded(TimeSpan.Zero);
+
+            // Assert
+            Assert.IsFalse(lifetimeFeature.RequestAborted.IsCancellationRequested);
+        }
+
         private HttpContextServerCallContext CreateServerCallContext(HttpContext httpContext, ILogger? logger = null)
         {
             return new HttpContextServerCallContext(httpContext, new GrpcServiceOptions(), logger ?? NullLogger.Instance);
+        }
+
+        private class TestBlockingHttpRequestLifetimeFeature : IHttpRequestLifetimeFeature
+        {
+            private readonly CancellationTokenSource _cts;
+
+            public TestBlockingHttpRequestLifetimeFeature()
+            {
+                _cts = new CancellationTokenSource();
+            }
+
+            public CancellationToken RequestAborted
+            {
+                get => _cts.Token;
+                set => throw new NotSupportedException();
+            }
+
+            public void Abort()
+            {
+                _cts.Token.WaitHandle.WaitOne();
+            }
+
+            public void CancelBlocking()
+            {
+                _cts.Cancel();
+            }
         }
 
         private class TestHttpRequestLifetimeFeature : IHttpRequestLifetimeFeature

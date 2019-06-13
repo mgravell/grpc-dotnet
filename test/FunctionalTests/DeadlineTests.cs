@@ -19,9 +19,9 @@
 using System;
 using System.IO;
 using System.IO.Pipelines;
-using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using FunctionalTestsWebsite.Infrastructure;
 using Greet;
 using Grpc.AspNetCore.FunctionalTests.Infrastructure;
 using Grpc.AspNetCore.Server.Internal;
@@ -75,7 +75,7 @@ namespace Grpc.AspNetCore.FunctionalTests
         public async Task WriteUntilDeadline_SuccessResponsesStreamed_CoreAsync(ServerStreamingServerMethod<HelloRequest, HelloReply> method)
         {
             // Arrange
-            var url = Fixture.DynamicGrpc.AddServerStreamingMethod<DeadlineTests, HelloRequest, HelloReply>(method);
+            var url = Fixture.DynamicGrpc.AddServerStreamingMethod<HelloRequest, HelloReply>(method);
 
             var requestMessage = new HelloRequest
             {
@@ -96,7 +96,7 @@ namespace Grpc.AspNetCore.FunctionalTests
             response.AssertIsSuccessfulGrpcRequest();
 
             var responseStream = await response.Content.ReadAsStreamAsync().DefaultTimeout();
-            var pipeReader = new StreamPipeReader(responseStream);
+            var pipeReader = PipeReader.Create(responseStream);
 
             var messageCount = 0;
 
@@ -145,13 +145,13 @@ namespace Grpc.AspNetCore.FunctionalTests
             // Arrange
             SetExpectedErrorsFilter(writeContext =>
             {
-                return writeContext.LoggerName == typeof(DeadlineTests).FullName &&
+                return writeContext.LoggerName == typeof(DynamicService).FullName &&
                        writeContext.EventId.Name == "ErrorExecutingServiceMethod" &&
                        writeContext.State.ToString() == "Error when executing service method 'WriteUntilError'." &&
                        writeContext.Exception!.Message == "Cannot write message after request is complete.";
             });
 
-            var url = Fixture.DynamicGrpc.AddServerStreamingMethod<DeadlineTests, HelloRequest, HelloReply>(WriteUntilError, nameof(WriteUntilError));
+            var url = Fixture.DynamicGrpc.AddServerStreamingMethod<HelloRequest, HelloReply>(WriteUntilError, nameof(WriteUntilError));
 
             var requestMessage = new HelloRequest
             {
@@ -172,7 +172,7 @@ namespace Grpc.AspNetCore.FunctionalTests
             response.AssertIsSuccessfulGrpcRequest();
 
             var responseStream = await response.Content.ReadAsStreamAsync().DefaultTimeout();
-            var pipeReader = new StreamPipeReader(responseStream);
+            var pipeReader = PipeReader.Create(responseStream);
 
             var messageCount = 0;
 

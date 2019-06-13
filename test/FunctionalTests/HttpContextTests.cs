@@ -17,15 +17,14 @@
 #endregion
 
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Greet;
 using Grpc.AspNetCore.FunctionalTests.Infrastructure;
-using Grpc.AspNetCore.Server.Internal;
-using Grpc.Tests.Shared;
 using Grpc.Core;
+using Grpc.Tests.Shared;
 using NUnit.Framework;
-using System.Linq;
 
 namespace Grpc.AspNetCore.FunctionalTests
 {
@@ -60,7 +59,7 @@ namespace Grpc.AspNetCore.FunctionalTests
         public async Task HttpContextExtensionMethod_ReturnContextInTrailer()
         {
             // Arrange
-            var url = Fixture.DynamicGrpc.AddUnaryMethod<HttpContextTests, HelloRequest, HelloReply>((request, context) =>
+            var url = Fixture.DynamicGrpc.AddUnaryMethod<HelloRequest, HelloReply>((request, context) =>
             {
                 var httpContext = context.GetHttpContext();
                 context.ResponseTrailers.Add("Test-HttpContext-PathAndQueryString", httpContext.Request.Path + httpContext.Request.QueryString);

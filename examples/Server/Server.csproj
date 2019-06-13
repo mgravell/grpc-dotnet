@@ -7,19 +7,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Requirements (Note that most of these changes will be made to the msbuild targets in Grpc.Tools) -->
-    <!-- 1. Grpc.Tools msbuild files: the Google.Protobuf.Tools.targets file needs to be updated to remove Condition=" '$(DesignTimeBuild)' != 'true' "  -->
-    <!-- 2. Generator metadata: this is the target that's run during the design time build to generate the *.cs files -->
-    <!-- 3. None ItemGroup: Remove the *.proto files from None since the generator metadata for those files are ignored -->
-    <!-- 4. Content ItemGroup: Include the *.proto files in the Content ItemGroup. This isn't required if the file is included in the project directory. I'm not sure about what's going on with this requirement. -->
-    <Protobuf Include="..\Proto\*.proto" GrpcServices="Server" Generator="MSBuild:Compile" />
+    <Protobuf Include="..\Proto\*.proto" />
 
-    <None Remove="@(Protobuf)" />
-    <Content Include="@(Protobuf)" LinkBase="Protos" />
-
-    <Compile Include="$(MSBuildThisFileDirectory)..\Shared\Resources.cs" />
+    <None Include="..\Certs\*.*" LinkBase="Certs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
 
     <ProjectReference Include="..\..\src\Grpc.AspNetCore.Server\Grpc.AspNetCore.Server.csproj" />
+    <ProjectReference Include="..\..\src\Grpc.AspNetCore.Server.ClientFactory\Grpc.AspNetCore.Server.ClientFactory.csproj" />
     <ProjectReference Include="..\..\src\Grpc.AspNetCore.Server.Reflection\Grpc.AspNetCore.Server.Reflection.csproj" />
     <ProjectReference Include="..\..\src\protobuf-net.Grpc\protobuf-net.Grpc.csproj" />
     <ProjectReference Include="..\Shared\SharedContract\SharedContract.csproj" />
@@ -28,6 +23,7 @@
     <PackageReference Include="Grpc.Tools" Version="$(GrpcPackageVersion)" PrivateAssets="All" />
     <PackageReference Include="protobuf-net" Version="2.4.0" />
     <PackageReference Include="System.ServiceModel.Primitives" Version="4.5.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="$(MicrosoftAspNetCorePackageVersion)" />
   </ItemGroup>
 
 </Project>

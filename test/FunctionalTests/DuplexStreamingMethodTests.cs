@@ -19,13 +19,11 @@
 using System;
 using System.IO;
 using System.IO.Pipelines;
-using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Chat;
 using FunctionalTestsWebsite.Services;
 using Grpc.AspNetCore.FunctionalTests.Infrastructure;
-using Grpc.AspNetCore.Server.Internal;
 using Grpc.Core;
 using Grpc.Tests.Shared;
 using NUnit.Framework;
@@ -62,7 +60,7 @@ namespace Grpc.AspNetCore.FunctionalTests
             response.AssertIsSuccessfulGrpcRequest();
 
             var responseStream = await response.Content.ReadAsStreamAsync().DefaultTimeout();
-            var pipeReader = new StreamPipeReader(responseStream);
+            var pipeReader = PipeReader.Create(responseStream);
 
             var message1Task = MessageHelpers.AssertReadStreamMessageAsync<ChatMessage>(pipeReader);
             var message1 = await message1Task.DefaultTimeout();
@@ -104,7 +102,7 @@ namespace Grpc.AspNetCore.FunctionalTests
             }
 
             // Arrange
-            var url = Fixture.DynamicGrpc.AddDuplexStreamingMethod<UnaryMethodTests, ChatMessage, ChatMessage>(ChatBufferHint);
+            var url = Fixture.DynamicGrpc.AddDuplexStreamingMethod<ChatMessage, ChatMessage>(ChatBufferHint);
 
             var ms = new MemoryStream();
             MessageHelpers.WriteMessage(ms, new ChatMessage
@@ -143,7 +141,7 @@ namespace Grpc.AspNetCore.FunctionalTests
             response.AssertIsSuccessfulGrpcRequest();
 
             var responseStream = await response.Content.ReadAsStreamAsync().DefaultTimeout();
-            var pipeReader = new StreamPipeReader(responseStream);
+            var pipeReader = PipeReader.Create(responseStream);
 
             var message1 = await MessageHelpers.AssertReadStreamMessageAsync<ChatMessage>(pipeReader).DefaultTimeout();
             Assert.AreEqual("John", message1.Name);

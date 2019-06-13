@@ -17,11 +17,11 @@
 #endregion
 
 using System;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Common;
 using Grpc.Core;
+using Grpc.Net.Client;
 
 namespace Sample.Clients
 {
@@ -29,18 +29,15 @@ namespace Sample.Clients
     {
         static async Task Main(string[] args)
         {
-            // Server will only support Https on Windows and Linux
-            var credentials = RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? ChannelCredentials.Insecure : ClientResources.SslCredentials;
-            var channel = new Channel("localhost:50051", credentials);
-            //var client = new Greeter.GreeterClient(channel);
-            var client = SharedContract.ClientFactory.CreateClient<SharedContract.IGreeter>(channel);
+            var httpClient = ClientResources.CreateHttpClient("localhost:50051");
+            var client = GrpcClient.Create<Greet.Greeter.GreeterClient>(httpClient);
+            // var client = SharedContract.ClientFactory.CreateClient<SharedContract.IGreeter>(channel);
 
             await UnaryCallExample(client);
 
             await ServerStreamingCallExample(client);
 
             Console.WriteLine("Shutting down");
-            await channel.ShutdownAsync();
             Console.WriteLine("Press any key to exit...");
             Console.ReadKey();
         }

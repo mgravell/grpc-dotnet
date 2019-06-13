@@ -18,6 +18,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Grpc.AspNetCore.Server.Model;
 using Grpc.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -73,13 +74,14 @@ namespace Grpc.AspNetCore.Server.Internal.CallHandlers
 
             GrpcProtocolHelpers.AddProtocolHeaders(httpContext.Response);
 
-            TResponse? response = null;
-
             try
             {
                 serverCallContext.Initialize();
+
                 var requestPayload = await httpContext.Request.BodyReader.ReadSingleMessageAsync(serverCallContext);
                 var request = Method.RequestMarshaller.Deserializer(requestPayload);
+
+                TResponse? response = null;
 
                 if (_pipelineInvoker == null)
                 {

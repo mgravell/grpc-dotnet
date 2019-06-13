@@ -17,9 +17,7 @@
 #endregion
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Grpc.Core;
@@ -124,7 +122,9 @@ namespace Grpc.Testing
         {
             if (expectCompressed != null)
             {
-                var encoding = context.RequestHeaders.SingleOrDefault(h => h.Key == "grpc-encoding")?.Value;
+                // ServerCallContext.RequestHeaders filters out grpc-* headers
+                // Get grpc-encoding from HttpContext instead
+                var encoding = context.GetHttpContext().Request.Headers.SingleOrDefault(h => h.Key == "grpc-encoding").Value.SingleOrDefault();
                 if (expectCompressed.Value)
                 {
                     if (encoding == null || encoding == "identity")

@@ -18,13 +18,11 @@
 
 using System.IO;
 using System.IO.Pipelines;
-using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using FunctionalTestsWebsite.Services;
 using Greet;
 using Grpc.AspNetCore.FunctionalTests.Infrastructure;
-using Grpc.AspNetCore.Server.Internal;
 using Grpc.Core;
 using Grpc.Tests.Shared;
 using NUnit.Framework;
@@ -56,7 +54,7 @@ namespace Grpc.AspNetCore.FunctionalTests
             response.AssertIsSuccessfulGrpcRequest();
 
             var responseStream = await response.Content.ReadAsStreamAsync().DefaultTimeout();
-            var pipeReader = new StreamPipeReader(responseStream);
+            var pipeReader = PipeReader.Create(responseStream);
 
             for (var i = 0; i < 3; i++)
             {
@@ -99,7 +97,7 @@ namespace Grpc.AspNetCore.FunctionalTests
             response.AssertIsSuccessfulGrpcRequest();
 
             var responseStream = await response.Content.ReadAsStreamAsync().DefaultTimeout();
-            var pipeReader = new StreamPipeReader(responseStream);
+            var pipeReader = PipeReader.Create(responseStream);
 
             for (var i = 0; i < 3; i++)
             {
@@ -133,7 +131,7 @@ namespace Grpc.AspNetCore.FunctionalTests
             }
 
             // Arrange
-            var url = Fixture.DynamicGrpc.AddServerStreamingMethod<UnaryMethodTests, HelloRequest, HelloReply>(SayHellosBufferHint);
+            var url = Fixture.DynamicGrpc.AddServerStreamingMethod<HelloRequest, HelloReply>(SayHellosBufferHint);
 
             var requestMessage = new HelloRequest
             {
@@ -156,7 +154,7 @@ namespace Grpc.AspNetCore.FunctionalTests
             response.AssertIsSuccessfulGrpcRequest();
 
             var responseStream = await response.Content.ReadAsStreamAsync().DefaultTimeout();
-            var pipeReader = new StreamPipeReader(responseStream);
+            var pipeReader = PipeReader.Create(responseStream);
 
             for (var i = 0; i < 3; i++)
             {

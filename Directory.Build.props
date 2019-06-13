@@ -9,11 +9,23 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
     <!-- Don't make missing XML docs a fatal build error, but still surface so we have visibility into undocumented APIs. -->
-    <WarningsNotAsErrors>$(WarningsNotAsErrors);CS1591</WarningsNotAsErrors>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);CS1591;CS8600;CS8601;CS8602;CS8603;CS8604;CS8620</WarningsNotAsErrors>
 
     <!-- static local methods are a C# 8.0 feature -->
     <LangVersion>preview</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- TODO (johluo): Remove this workaround when VS updates -->
+    <PackageReference Include="Microsoft.Net.Compilers.Toolset" Version="$(MicrosoftNetCompilersToolsetPackageVersion)" PrivateAssets="All" />
+  </ItemGroup>
+
+  <Target Name="WorkaroundNetStandard" AfterTargets="ResolvePackageAssets">
+    <!-- TODO (jamesnk): Remove this workaround when VS updates - https://github.com/dotnet/cli/issues/11378#issuecomment-499988244 -->
+    <ItemGroup>
+      <TransitiveFrameworkReference Remove="NETStandard.Library" />
+    </ItemGroup>
+  </Target>
 
 </Project>

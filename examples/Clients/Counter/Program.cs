@@ -17,12 +17,11 @@
 #endregion
 
 using System;
-using System.IO;
-using System.Runtime.InteropServices;
+using System.Net.Http;
 using System.Threading.Tasks;
 using Common;
 using Count;
-using Grpc.Core;
+using Grpc.Net.Client;
 
 namespace Sample.Clients
 {
@@ -32,17 +31,14 @@ namespace Sample.Clients
 
         static async Task Main(string[] args)
         {
-            // Server will only support Https on Windows and Linux
-            var credentials = RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? ChannelCredentials.Insecure : ClientResources.SslCredentials;
-            var channel = new Channel("localhost:50051", credentials);
-            var client = new Counter.CounterClient(channel);
+            var httpClient = ClientResources.CreateHttpClient("localhost:50051");
+            var client = GrpcClient.Create<Counter.CounterClient>(httpClient);
 
             await UnaryCallExample(client);
 
             await ClientStreamingCallExample(client);
 
             Console.WriteLine("Shutting down");
-            await channel.ShutdownAsync();
             Console.WriteLine("Press any key to exit...");
             Console.ReadKey();
         }
@@ -57,7 +53,7 @@ namespace Sample.Clients
         {
             using (var call = client.AccumulateCount())
             {
-                for (int i = 0; i < 3; i++)
+                for (var i = 0; i < 3; i++)
                 {
                     var count = RNG.Next(5);
                     Console.WriteLine($"Accumulating with {count}");

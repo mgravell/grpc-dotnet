@@ -6,22 +6,26 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Protobuf Include="Proto\*.proto" GrpcServices="Server,Client" Generator="MSBuild:Compile" />
-    <None Remove="@(Protobuf)" />
-    <Content Include="@(Protobuf)" LinkBase="" />
+    <Protobuf Include="Proto\*.proto" GrpcServices="Server,Client" />
 
+    <Compile Include="..\Shared\HttpContextHelpers.cs" Link="Infrastructure\HttpContextHelpers.cs" />
     <Compile Include="..\Shared\HttpContextServerCallContextHelpers.cs" Link="Infrastructure\HttpContextServerCallContextHelpers.cs" />
     <Compile Include="..\Shared\MessageHelpers.cs" Link="Infrastructure\MessageHelpers.cs" />
+    <Compile Include="..\Shared\ResponseUtils.cs" Link="Infrastructure\ResponseUtils.cs" />
     <Compile Include="..\Shared\SyncPoint.cs" Link="Infrastructure\SyncPoint.cs" />
     <Compile Include="..\Shared\SyncPointMemoryStream.cs" Link="Infrastructure\SyncPointMemoryStream.cs" />
     <Compile Include="..\Shared\TaskExtensions.cs" Link="Infrastructure\TaskExtensions.cs" />
+    <Compile Include="..\Shared\TestHelpers.cs" Link="Infrastructure\TestHelpers.cs" />
+    <Compile Include="..\Shared\TestHttpContextAccessor.cs" Link="Infrastructure\TestHttpContextAccessor.cs" />
+    <Compile Include="..\Shared\TestRequestBodyPipeFeature.cs" Link="Infrastructure\TestRequestBodyPipeFeature.cs" />
+    <Compile Include="..\Shared\TestResponseBodyPipeFeature.cs" Link="Infrastructure\TestResponseBodyPipeFeature.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
 
     <ProjectReference Include="..\..\src\Grpc.AspNetCore.Server\Grpc.AspNetCore.Server.csproj" />
-    <ProjectReference Include="..\..\src\Grpc.AspNetCore.Server.GrpcClient\Grpc.AspNetCore.Server.GrpcClient.csproj" />
+    <ProjectReference Include="..\..\src\Grpc.AspNetCore.Server.ClientFactory\Grpc.AspNetCore.Server.ClientFactory.csproj" />
     <ProjectReference Include="..\..\src\Grpc.AspNetCore.Server.Reflection\Grpc.AspNetCore.Server.Reflection.csproj" />
 
     <PackageReference Include="Google.Protobuf" Version="$(GoogleProtobufPackageVersion)" />

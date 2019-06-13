@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -32,12 +31,11 @@ using Grpc.Auth;
 using Grpc.Core;
 using Grpc.Core.Logging;
 using Grpc.Core.Utils;
-using Grpc.NetCore.HttpClient;
+using Grpc.Net.Client;
 using Grpc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
-using NUnit.Framework;
 
 namespace InteropTestsClient
 {
@@ -211,7 +209,10 @@ namespace InteropTestsClient
             }
             else if (channel is HttpClientChannel httpClientChannel)
             {
-                return GrpcClientFactory.Create<TClient>(httpClientChannel.BaseAddress, httpClientChannel.HttpClientHandler, loggerFactory);
+                var httpClient = new HttpClient(httpClientChannel.HttpClientHandler);
+                httpClient.BaseAddress = new Uri(httpClientChannel.BaseAddress, UriKind.RelativeOrAbsolute);
+
+                return GrpcClient.Create<TClient>(httpClient, loggerFactory);
             }
             else
             {
@@ -271,6 +272,9 @@ namespace InteropTestsClient
                     break;
                 case "unimplemented_service":
                     RunUnimplementedService(CreateClient<UnimplementedService.UnimplementedServiceClient>(channel));
+                    break;
+                case "special_status_message":
+                    await RunSpecialStatusMessageAsync(client);
                     break;
                 case "unimplemented_method":
                     RunUnimplementedMethod(client);
@@ -338,7 +342,7 @@ namespace InteropTestsClient
             using (var call = client.StreamingOutputCall(request))
             {
                 var responseList = await call.ResponseStream.ToListAsync();
-                CollectionAssert.AreEqual(bodySizes, responseList.Select((item) => item.Payload.Body.Length));
+                CollectionAssert.AreEqual(bodySizes, responseList.Select((item) => item.Payload.Body.Length).ToList());
             }
             Console.WriteLine("Passed!");
         }
@@ -421,8 +425,8 @@ namespace InteropTestsClient
             var response = client.UnaryCall(request);
 
             Assert.AreEqual(314159, response.Payload.Body.Length);
-            Assert.False(string.IsNullOrEmpty(response.OauthScope));
-            Assert.True(oauthScope.Contains(response.OauthScope));
+            Assert.IsFalse(string.IsNullOrEmpty(response.OauthScope));
+            Assert.IsTrue(oauthScope.Contains(response.OauthScope));
             Assert.AreEqual(defaultServiceAccount, response.Username);
             Console.WriteLine("Passed!");
         }
@@ -461,8 +465,8 @@ namespace InteropTestsClient
 
             var response = client.UnaryCall(request, new CallOptions(credentials: credentials));
 
-            Assert.False(string.IsNullOrEmpty(response.OauthScope));
-            Assert.True(oauthScope.Contains(response.OauthScope));
+            Assert.IsFalse(string.IsNullOrEmpty(response.OauthScope));
+            Assert.IsTrue(oauthScope.Contains(response.OauthScope));
             Assert.AreEqual(GetEmailFromServiceAccountFile(), response.Username);
             Console.WriteLine("Passed!");
         }
@@ -649,6 +653,33 @@ namespace InteropTestsClient
                     Assert.AreEqual(StatusCode.Unknown, e.Status.StatusCode);
                     Assert.AreEqual(echoStatus.Message, e.Status.Detail);
                 }
+            }
+
+            Console.WriteLine("Passed!");
+        }
+
+        private static async Task RunSpecialStatusMessageAsync(TestService.TestServiceClient client)
+        {
+            Console.WriteLine("running special_status_message");
+
+            var echoStatus = new EchoStatus
+            {
+                Code = 2,
+                Message = "\t\ntest with whitespace\r\nand Unicode BMP ☺ and non-BMP 😈\t\n"
+            };
+
+            try
+            {
+                await client.UnaryCallAsync(new SimpleRequest
+                {
+                    ResponseStatus = echoStatus
+                });
+                Assert.Fail();
+            }
+            catch (RpcException e)
+            {
+                Assert.AreEqual(StatusCode.Unknown, e.Status.StatusCode);
+                Assert.AreEqual(echoStatus.Message, e.Status.Detail);
             }
 
             Console.WriteLine("Passed!");

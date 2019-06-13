@@ -23,10 +23,10 @@ using System.Threading.Tasks;
 using FunctionalTestsWebsite.Infrastructure;
 using FunctionalTestsWebsite.Services;
 using Greet;
+using Grpc.AspNetCore.Server.Model;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
@@ -64,7 +64,7 @@ namespace FunctionalTestsWebsite
                 options.AddPolicy(JwtBearerDefaults.AuthenticationScheme, policy =>
                 {
                     policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme);
-                    policy.RequireClaim(ClaimTypes.NameIdentifier);
+                    policy.RequireClaim(ClaimTypes.Name);
                 });
             });
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -91,6 +91,7 @@ namespace FunctionalTestsWebsite
             // This will add a default types if the site is run standalone
             services.TryAddSingleton<IPrimaryMessageHandlerProvider, HttpPrimaryMessageHandlerProvider>();
             services.TryAddSingleton<DynamicEndpointDataSource>();
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IServiceMethodProvider<DynamicService>, DynamicServiceModelProvider>());
 
             // Add a Singleton service
             services.AddSingleton<SingletonCounterService>();
@@ -114,9 +115,8 @@ namespace FunctionalTestsWebsite
                 endpoints.MapGrpcService<SingletonCounterService>();
                 endpoints.MapGrpcService<NestedService>();
                 endpoints.MapGrpcService<CompressionService>();
-
-                // Bind via configure method
-                endpoints.MapGrpcService<GreeterService>(options => options.BindAction = Greet.Greeter.BindService);
+                endpoints.MapGrpcService<AnyService>();
+                endpoints.MapGrpcService<GreeterService>();
 
                 endpoints.DataSources.Add(endpoints.ServiceProvider.GetRequiredService<DynamicEndpointDataSource>());
 
@@ -135,7 +135,7 @@ namespace FunctionalTestsWebsite
 
         private string GenerateJwtToken()
         {
-            var claims = new[] { new Claim(ClaimTypes.NameIdentifier, "testuser") };
+            var claims = new[] { new Claim(ClaimTypes.Name, "testuser") };
             var credentials = new SigningCredentials(SecurityKey, SecurityAlgorithms.HmacSha256);
             var token = new JwtSecurityToken("FunctionalTestServer", "FunctionalTests", claims, expires: DateTime.Now.AddSeconds(5), signingCredentials: credentials);
             return JwtTokenHandler.WriteToken(token);
