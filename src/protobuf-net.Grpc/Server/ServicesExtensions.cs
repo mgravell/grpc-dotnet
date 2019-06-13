@@ -60,7 +60,7 @@ namespace ProtoBuf.Grpc.Server
                 #region Utility method to invoke AddMethod<,,>
                 object?[]? argsBuffer = null;
                 Type[] typesBuffer = Array.Empty<Type>();
-                bool AddMethod(Type @in, Type @out, MethodInfo m, MethodType t, Func<ParameterExpression, ParameterExpression[], Expression>? invoker = null)
+                bool AddMethod(Type @in, Type @out, MethodInfo m, MethodType t, Func<ParameterExpression[], Expression>? invoker = null)
                 {
                     if (typesBuffer.Length == 0)
                     {
@@ -81,13 +81,6 @@ namespace ProtoBuf.Grpc.Server
                     return true;
                 }
 
-                Func<ParameterExpression, ParameterExpression[], Expression> TaskFromResult(MethodInfo target)
-                {
-                    // (svc, ...) => Task.FromResult(svc.TheMethod(...))
-                    return (svc, args) => Expression.Call(typeof(Task), nameof(Task.FromResult), new[] { target.ReturnType },
-                        Expression.Call(svc, target, args));
-                }
-
                 #endregion
 
                 foreach (var method in serviceContract.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
@@ -102,7 +95,42 @@ namespace ProtoBuf.Grpc.Server
 
                         bool bound = false;
                         var args = method.GetParameters();
-                        if (args.Length == 2 && args[1].ParameterType == typeof(ServerCallContext))
+                        if (args.Length == 1)
+                        {
+                            if (outType.IsGenericType && outType.GetGenericTypeDefinition() == typeof(Task<>))
+                            {
+                                outType = outType.GetGenericArguments().Single();
+                                var inType = args[0].ParameterType;
+                                if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
+                                {   // Task<TResponse> ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream);
+                                    // we will create: (svc, req, ctx) => svc.TheMethod(req)
+                                    bound = AddMethod(inType.GetGenericArguments().Single(), outType, method, MethodType.ClientStreaming,
+                                        args => Expression.Call(args[0], method, args[1]));
+                                }
+                                else
+                                {   // Task<TResponse> UnaryServerMethod(TRequest request);
+                                    // we will create: (svc, req, ctx) => svc.TheMethod(req)
+                                    bound = AddMethod(inType, outType, method, MethodType.Unary,
+                                        args => Expression.Call(args[0], method, args[1]));
+                                }
+                            }
+                            else
+                            {
+                                var inType = args[0].ParameterType;
+                                if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
+                                {   // TResponse ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream);
+                                    // not handled: IAsyncStreamReader is inherently async
+                                }
+                                else
+                                {   // TResponse UnaryServerMethod(TRequest request);
+                                    // we will create: (svc, req, ctx) => Task.FromResult(svc.TheMethod(req))
+                                    bound = AddMethod(inType, outType, method, MethodType.Unary,
+                                        args => Expression.Call(typeof(Task), nameof(Task.FromResult), new[] { method.ReturnType },
+                                            Expression.Call(args[0], method, args[1])));
+                                }
+                            }
+                        }
+                        else if (args.Length == 2 && args[1].ParameterType == typeof(ServerCallContext))
                         {
                             if (outType.IsGenericType && outType.GetGenericTypeDefinition() == typeof(Task<>))
                             {
@@ -127,7 +155,9 @@ namespace ProtoBuf.Grpc.Server
                                 else
                                 {   // TResponse UnaryServerMethod(TRequest request, ServerCallContext serverCallContext);
                                     // we will create: (svc, req, ctx) => Task.FromResult(svc.TheMethod(req, ctx))
-                                    bound = AddMethod(inType, outType, method, MethodType.Unary, TaskFromResult(method));
+                                    bound = AddMethod(inType, outType, method, MethodType.Unary,
+                                        args => Expression.Call(typeof(Task), nameof(Task.FromResult), new[] { method.ReturnType },
+                                            Expression.Call(args[0], method, args[1], args[2])));
                                 }
                             }
                         }
@@ -167,7 +197,7 @@ namespace ProtoBuf.Grpc.Server
         private static void AddMethod<TService, TRequest, TResponse>(
             string serviceName, MethodInfo method, MethodType methodType,
             ServiceMethodProviderContext<TService> context, ILogger logger,
-            Func<ParameterExpression, ParameterExpression[], Expression>? invoker = null)
+            Func<ParameterExpression[], Expression>? invoker = null)
             where TService : class
             where TRequest : class
             where TResponse : class
@@ -195,10 +225,7 @@ namespace ProtoBuf.Grpc.Server
 
                 var methodParameters = typeof(TDelegate).GetMethod("Invoke")?.GetParameters() ?? Array.Empty<ParameterInfo>();
                 var lambdaParameters = Array.ConvertAll(methodParameters, p => Expression.Parameter(p.ParameterType, p.Name));
-                var svc = lambdaParameters[0];
-                var args = new ParameterExpression[lambdaParameters.Length - 1];
-                for (int i = 0; i < args.Length; i++) args[i] = lambdaParameters[i + 1];
-                return Expression.Lambda<TDelegate>(invoker(svc, args), lambdaParameters).Compile();
+                return Expression.Lambda<TDelegate>(invoker(lambdaParameters), lambdaParameters).Compile();
 
             }
 

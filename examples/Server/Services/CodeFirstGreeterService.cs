@@ -9,7 +9,8 @@ namespace Server.Services
     [ServiceContract(Name = "Greet.Greeter")]
     interface IGreeterService
     {
-        CodeFirstGreeterService.HelloReply SayHello(CodeFirstGreeterService.HelloRequest request, ServerCallContext context);
+        // note: this is *NOT* a google-compatible signature; no context arg, not a Task, etc
+        CodeFirstGreeterService.HelloReply SayHello(CodeFirstGreeterService.HelloRequest request);
     }
 
     [ServiceContract(Name = "Greet.Greeter")]
@@ -23,7 +24,7 @@ namespace Server.Services
             _logger = loggerFactory.CreateLogger<CodeFirstGreeterService>();
         }
 
-        HelloReply IGreeterService.SayHello(HelloRequest request, ServerCallContext _)
+        HelloReply IGreeterService.SayHello(HelloRequest request)
         {
             _logger.LogInformation($"Sending hello to {request.Name}");
             return new HelloReply { Message = "Hello (sync/explicit interface impl) " + request.Name };
