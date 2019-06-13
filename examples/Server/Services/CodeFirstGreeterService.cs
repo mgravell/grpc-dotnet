@@ -10,7 +10,20 @@ namespace Server.CodeFirstGreeterService
     interface IGreeterService
     {
         // note: this is *NOT* a google-compatible signature; no context arg, not a Task, etc
-        CodeFirstGreeterService.HelloReply SayHello(CodeFirstGreeterService.HelloRequest request);
+        HelloReply SayHello(HelloRequest request);
+    }
+
+    [ProtoContract]
+    public class HelloRequest
+    {
+        [ProtoMember(1)]
+        public string? Name { get; set; }
+    }
+    [ProtoContract]
+    public class HelloReply
+    {
+        [ProtoMember(1)]
+        public string? Message { get; set; }
     }
 
     [ServiceContract(Name = "Greet.Greeter")]
@@ -48,17 +61,5 @@ namespace Server.CodeFirstGreeterService
                 await Task.Delay(1000);
             }
         }
-    }
-    [ProtoContract]
-    public class HelloRequest
-    {
-        [ProtoMember(1)]
-        public string? Name { get; set; }
-    }
-    [ProtoContract]
-    public class HelloReply
-    {
-        [ProtoMember(1)]
-        public string? Message { get; set; }
     }
 }
