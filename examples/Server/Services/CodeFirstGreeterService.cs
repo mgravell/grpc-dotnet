@@ -6,14 +6,14 @@ using System.Threading.Tasks;
 
 namespace Server.Services
 {
-    [ServiceContract(Name = "Greet.Greeter")] // only needed to explicitly specify service name
+    [ServiceContract(Name = "Greet.Greeter")]
     interface IGreeterService
     {
         CodeFirstGreeterService.HelloReply SayHello(CodeFirstGreeterService.HelloRequest request, ServerCallContext context);
     }
 
     [ServiceContract(Name = "Greet.Greeter")]
-    class CodeFirstGreeterService : IGreeterService // (otherwise, the type's full name is used, i.e. {namespace}.{typename})
+    class CodeFirstGreeterService : IGreeterService
     {
 
         private readonly ILogger<CodeFirstGreeterService> _logger;
