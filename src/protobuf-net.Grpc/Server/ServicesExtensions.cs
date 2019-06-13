@@ -7,6 +7,7 @@ using ProtoBuf.Grpc.Internal;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.ServiceModel;
@@ -45,7 +46,7 @@ namespace ProtoBuf.Grpc.Server
                 #region Utility method to invoke AddMethod<,,>
                 object?[]? argsBuffer = null;
                 Type[] typesBuffer = Array.Empty<Type>();
-                void AddMethod(Type @in, Type @out, MethodInfo m, MethodType t)
+                bool AddMethod(Type @in, Type @out, MethodInfo m, MethodType t, Func<ParameterExpression, ParameterExpression[], Expression>? invoker = null)
                 {
                     if (typesBuffer.Length == 0)
                     {
@@ -56,13 +57,23 @@ namespace ProtoBuf.Grpc.Server
 
                     if (argsBuffer == null)
                     {
-                        argsBuffer = new object?[] { serviceName, null, null, context, _logger };
+                        argsBuffer = new object?[] { serviceName, null, null, context, _logger, null };
                     }
                     argsBuffer[1] = m;
                     argsBuffer[2] = t;
+                    argsBuffer[5] = invoker;
 
                     s_addMethod.MakeGenericMethod(typesBuffer).Invoke(null, argsBuffer);
+                    return true;
                 }
+
+                Func<ParameterExpression, ParameterExpression[], Expression> TaskFromResult(MethodInfo target)
+                {
+                    // (svc, ...) => Task.FromResult(svc.TheMethod(...))
+                    return (svc,args) => Expression.Call(typeof(Task), nameof(Task.FromResult), new[] { target.ReturnType },
+                        Expression.Call(svc, target, args));
+                }
+
                 #endregion
 
                 foreach (var method in svcType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
@@ -72,20 +83,35 @@ namespace ProtoBuf.Grpc.Server
                         var outType = method.ReturnType;
                         if (outType == null) continue;
 
+                        bool bound = false;
                         var args = method.GetParameters();
-                        if (args.Length == 2 && args[1].ParameterType == typeof(ServerCallContext)
-                            && outType.IsGenericType && outType.GetGenericTypeDefinition() == typeof(Task<>))
+                        if (args.Length == 2 && args[1].ParameterType == typeof(ServerCallContext))
                         {
-                            outType = outType.GetGenericArguments().Single();
-                            var inType = args[0].ParameterType;
-                            if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
-                            {   // Task<TResponse> ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream, ServerCallContext serverCallContext);
-                                AddMethod(inType.GetGenericArguments().Single(), outType, method, MethodType.ClientStreaming);
-
+                            if (outType.IsGenericType && outType.GetGenericTypeDefinition() == typeof(Task<>))
+                            {
+                                outType = outType.GetGenericArguments().Single();
+                                var inType = args[0].ParameterType;
+                                if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
+                                {   // Task<TResponse> ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream, ServerCallContext serverCallContext);
+                                    bound = AddMethod(inType.GetGenericArguments().Single(), outType, method, MethodType.ClientStreaming);
+                                }
+                                else
+                                {   // Task<TResponse> UnaryServerMethod(TRequest request, ServerCallContext serverCallContext);
+                                    bound = AddMethod(inType, outType, method, MethodType.Unary);
+                                }
                             }
                             else
-                            {   // Task<TResponse> UnaryServerMethod(TRequest request, ServerCallContext serverCallContext);
-                                AddMethod(inType, outType, method, MethodType.Unary);
+                            {
+                                var inType = args[0].ParameterType;
+                                if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
+                                {   // TResponse ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream, ServerCallContext serverCallContext);
+                                    // not handled: IAsyncStreamReader is inherently async
+                                }
+                                else
+                                {   // TResponse UnaryServerMethod(TRequest request, ServerCallContext serverCallContext);
+                                    // we will create: (svc, req, ctx) => Task.FromResult(svc.TheMethod(req, ctx))
+                                    bound = AddMethod(inType, outType, method, MethodType.Unary, TaskFromResult(method));
+                                }
                             }
                         }
                         else if (args.Length == 3 && args[2].ParameterType == typeof(ServerCallContext) && outType == typeof(Task)
@@ -95,21 +121,18 @@ namespace ProtoBuf.Grpc.Server
                             outType = args[1].ParameterType.GetGenericArguments().Single();
                             var inType = args[0].ParameterType;
                             if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
-                            {
-                                // Task DuplexStreamingServerMethod(IAsyncStreamReader<TRequest> input, IServerStreamWriter<TResponse> output, ServerCallContext serverCallContext);
-                                AddMethod(inType.GetGenericArguments().Single(), outType, method, MethodType.DuplexStreaming);
+                            {   // Task DuplexStreamingServerMethod(IAsyncStreamReader<TRequest> input, IServerStreamWriter<TResponse> output, ServerCallContext serverCallContext);
+                                bound = AddMethod(inType.GetGenericArguments().Single(), outType, method, MethodType.DuplexStreaming);
                             }
                             else
-                            {
-                                // Task ServerStreamingServerMethod(TRequest request, IServerStreamWriter<TResponse> stream, ServerCallContext serverCallContext);
-                                AddMethod(inType, outType, method, MethodType.ServerStreaming);
+                            {   // Task ServerStreamingServerMethod(TRequest request, IServerStreamWriter<TResponse> stream, ServerCallContext serverCallContext);
+                                bound = AddMethod(inType, outType, method, MethodType.ServerStreaming);
                             }
                         }
-                        else
+                        if (bound)
                         {
-                            continue; // not a pattern we recognize
+                            _logger.Log(LogLevel.Warning, "Bound {0}.{1}", svcType.Name, method.Name);
                         }
-                        _logger.Log(LogLevel.Warning, "Bound {0}.{1}", svcType.Name, method.Name);
                     }
                     catch (Exception ex)
                     {
@@ -126,7 +149,8 @@ namespace ProtoBuf.Grpc.Server
 
         private static void AddMethod<TService, TRequest, TResponse>(
             string serviceName, MethodInfo method, MethodType methodType,
-            ServiceMethodProviderContext<TService> context, ILogger logger)
+            ServiceMethodProviderContext<TService> context, ILogger logger,
+            Func<ParameterExpression, ParameterExpression[], Expression>? invoker = null)
             where TService : class
             where TRequest : class
             where TResponse : class
@@ -147,9 +171,18 @@ namespace ProtoBuf.Grpc.Server
             // Add method metadata last so it has a higher priority
             metadata.AddRange(method.GetCustomAttributes(inherit: true));
 
-            T As<T>() where T : Delegate
+            TDelegate As<TDelegate>() where TDelegate : Delegate
             {
-                return (T)Delegate.CreateDelegate(typeof(T), null, method);
+                // basic - direct call
+                if (invoker == null) return (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), null, method);
+
+                var methodParameters = typeof(TDelegate).GetMethod("Invoke")?.GetParameters() ?? Array.Empty<ParameterInfo>();
+                var lambdaParameters = Array.ConvertAll(methodParameters, p => Expression.Parameter(p.ParameterType, p.Name));
+                var svc = lambdaParameters[0];
+                var args = new ParameterExpression[lambdaParameters.Length - 1];
+                for (int i = 0; i < args.Length; i++) args[i] = lambdaParameters[i + 1];
+                return Expression.Lambda<TDelegate>(invoker(svc, args), lambdaParameters).Compile();
+
             }
 
 #pragma warning disable CS8625

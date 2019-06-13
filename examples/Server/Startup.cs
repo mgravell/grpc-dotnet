@@ -174,10 +174,16 @@ class CodeFirstGreeterService // (otherwise, the type's full name is used, i.e. 
         _logger = loggerFactory.CreateLogger<CodeFirstGreeterService>();
     }
 
-    public Task<HelloReply> SayHelloAsync(HelloRequest request, ServerCallContext _)
+    //public Task<HelloReply> SayHelloAsync(HelloRequest request, ServerCallContext _)
+    //{
+    //    _logger.LogInformation($"Sending hello to {request.Name}");
+    //    return Task.FromResult(new HelloReply { Message = "Hello " + request.Name });
+    //}
+
+    public HelloReply SayHello(HelloRequest request, ServerCallContext _)
     {
-        _logger.LogInformation($"Sending hello to {request.Name}");
-        return Task.FromResult(new HelloReply { Message = "Hello " + request.Name });
+        _logger.LogInformation($"Sending **sync** hello to {request.Name}");
+        return new HelloReply { Message = "Hello " + request.Name };
     }
 
     public async Task SayHellosAsync(HelloRequest request, IServerStreamWriter<HelloReply> responseStream, ServerCallContext context)
