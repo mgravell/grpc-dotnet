@@ -176,55 +176,5 @@ namespace ProtoBuf.Grpc.Server
             }
 #pragma warning restore CS8625
         }
-
-        //private static void DoTheMagic<TService>(ServiceBinderBase binder, TService service)
-        //{
-        //    var svcType = typeof(TService);
-
-        //    
-
-
-        //    foreach (var method in svcType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-        //    {
-        //        var outType = method.ReturnType;
-        //        if (outType == null) continue;
-        //        var args = method.GetParameters();
-        //        if (args.Length == 2 && args[1].ParameterType == typeof(ServerCallContext)
-        //            && outType.IsGenericType && outType.GetGenericTypeDefinition() == typeof(Task<>))
-        //        {
-        //            outType = outType.GetGenericArguments().Single();
-        //            var inType = args[0].ParameterType;
-        //            if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
-        //            {   // Task<TResponse> ClientStreamingServerMethod(IAsyncStreamReader<TRequest> stream, ServerCallContext serverCallContext);
-        //                inType = inType.GetGenericArguments().Single();
-        //                AddMethod(inType, outType, method, MethodType.ClientStreaming);
-
-        //            }
-        //            else
-        //            {   // Task<TResponse> UnaryServerMethod(TRequest request, ServerCallContext serverCallContext);
-        //                AddMethod(inType, outType, method, MethodType.Unary);
-        //            }
-        //        }
-        //        else if (args.Length == 3 && args[2].ParameterType == typeof(ServerCallContext) && outType == typeof(Task)
-        //            && args[1].ParameterType.IsGenericType
-        //            && args[1].ParameterType.GetGenericTypeDefinition() == typeof(IServerStreamWriter<>))
-        //        {
-        //            outType = args[1].ParameterType.GetGenericArguments().Single();
-        //            var inType = args[0].ParameterType;
-        //            if (inType.IsGenericType && inType.GetGenericTypeDefinition() == typeof(IAsyncStreamReader<>))
-
-        //            {
-        //                inType = inType.GetGenericArguments().Single();
-        //                // Task DuplexStreamingServerMethod(IAsyncStreamReader<TRequest> input, IServerStreamWriter<TResponse> output, ServerCallContext serverCallContext);
-        //                AddMethod(inType, outType, method, MethodType.DuplexStreaming);
-        //            }
-        //            else
-        //            {
-        //                // Task ServerStreamingServerMethod(TRequest request, IServerStreamWriter<TResponse> stream, ServerCallContext serverCallContext);
-        //                AddMethod(inType, outType, method, MethodType.ServerStreaming);
-        //            }
-        //        }
-        //    }
-        //}
     }
 }

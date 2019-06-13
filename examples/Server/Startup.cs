@@ -32,6 +32,7 @@ using ProtoBuf;
 using ProtoBuf.Grpc.Server;
 using Microsoft.IdentityModel.Tokens;
 using Server.Interceptors;
+using Microsoft.Extensions.Logging;
 
 namespace GRPCServer
 {
@@ -118,11 +119,11 @@ namespace GRPCServer
             {
                 endpoints.MapGrpcService<MailerService>();
                 endpoints.MapGrpcService<CounterService>();
-                endpoints.MapGrpcService<GreeterService>();
+                // endpoints.MapGrpcService<GreeterService>();
+                endpoints.MapGrpcService<CodeFirstGreeterService>();
                 endpoints.MapGrpcService<TicketerService>();
                 endpoints.MapGrpcService<CertifierService>();
                 endpoints.MapGrpcService<AggregatorService>();
-                endpoints.MapGrpcService<MyService>();
                 endpoints.MapGrpcReflectionService();
 
                 endpoints.MapGet("/generateJwtToken", context =>
@@ -151,7 +152,7 @@ namespace GRPCServer
 }
 
 [ServiceContract(Name = "Greet.Greeter")] // only needed to explicitly specify service name
-class MyService // (otherwise, the type's full name is used, i.e. {namespace}.{typename})
+class CodeFirstGreeterService // (otherwise, the type's full name is used, i.e. {namespace}.{typename})
 {
     // note: currently only very specific API signatures are supported, as it needs to match
     // the signature that the underlying google API uses; a +1 feature would be to support
@@ -166,16 +167,34 @@ class MyService // (otherwise, the type's full name is used, i.e. {namespace}.{t
     // (although that is not a hard requirement or expectation)
     // 
 
-    public Task<HelloReply> SayHelloAsync(HelloRequest request, ServerCallContext context)
+    private readonly ILogger _logger;
+
+    public CodeFirstGreeterService(ILoggerFactory loggerFactory)
     {
-        return Task.FromResult(new HelloReply { Message = $"Hello, {request.Name}" });
+        _logger = loggerFactory.CreateLogger<CodeFirstGreeterService>();
     }
 
-    public async Task SayHellosAsync(HelloRequest request, IServerStreamWriter<HelloReply> stream, ServerCallContext serverCallContext)
+    public Task<HelloReply> SayHelloAsync(HelloRequest request, ServerCallContext _)
     {
-        for (int i = 0; i< 5; i++)
+        _logger.LogInformation($"Sending hello to {request.Name}");
+        return Task.FromResult(new HelloReply { Message = "Hello " + request.Name });
+    }
+
+    public async Task SayHellosAsync(HelloRequest request, IServerStreamWriter<HelloReply> responseStream, ServerCallContext context)
+    {
+        var httpContext = context.GetHttpContext();
+        _logger.LogInformation($"Connection id: {httpContext.Connection.Id}");
+
+        var i = 0;
+        while (!context.CancellationToken.IsCancellationRequested)
         {
-            await stream.WriteAsync(new HelloReply { Message = $"Hellos {i}, {request.Name}" });
+            var message = $"How are you {request.Name}? {++i}";
+            _logger.LogInformation($"Sending greeting {message}.");
+
+            await responseStream.WriteAsync(new HelloReply { Message = message });
+
+            // Gotta look busy
+            await Task.Delay(1000);
         }
     }
 
