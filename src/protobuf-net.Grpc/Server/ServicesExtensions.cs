@@ -35,12 +35,26 @@ namespace ProtoBuf.Grpc.Server
                 // ignore any services that are known to be the default handler
                 if (Attribute.IsDefined(typeof(TService), typeof(BindServiceMethodAttribute))) return;
 
-                _logger.Log(LogLevel.Warning, "pb-net processing {0}", typeof(TService).Name);
+                // we support methods that match suitable signatures, where:
+                // - the method is directly on TService and is marked [OperationContract]
+                // - the method is on an interface that TService implements, and the interface is marked [ServiceContract]
+                AddMethodsForService(context,typeof(TService));
+                foreach(var iType in typeof(TService).GetInterfaces())
+                {
+                    AddMethodsForService(context, iType);
+                }
+            }
 
-                var svcType = typeof(TService);
-                var sva = (ServiceContractAttribute?)Attribute.GetCustomAttribute(svcType, typeof(ServiceContractAttribute));
+            private void AddMethodsForService(ServiceMethodProviderContext<TService> context, Type serviceContract)
+            {
+                bool isPublicContract = typeof(TService) == serviceContract;
+                var sva = (ServiceContractAttribute?)Attribute.GetCustomAttribute(serviceContract, typeof(ServiceContractAttribute), inherit: true);
+                if (sva == null && !isPublicContract) return; // for interfaces: only process those marked [ServiceContract]; for the class itself: this is optional
+
+                _logger.Log(LogLevel.Warning, "pb-net processing {0}/{1}", typeof(TService).Name, serviceContract.Name);
+
                 var serviceName = sva?.Name;
-                if (string.IsNullOrWhiteSpace(serviceName)) serviceName = svcType.FullName?.Replace('+', '.');
+                if (string.IsNullOrWhiteSpace(serviceName)) serviceName = serviceContract.FullName?.Replace('+', '.');
                 if (string.IsNullOrWhiteSpace(serviceName)) return; // no shirt, no shoes, no service
 
                 #region Utility method to invoke AddMethod<,,>
@@ -70,16 +84,19 @@ namespace ProtoBuf.Grpc.Server
                 Func<ParameterExpression, ParameterExpression[], Expression> TaskFromResult(MethodInfo target)
                 {
                     // (svc, ...) => Task.FromResult(svc.TheMethod(...))
-                    return (svc,args) => Expression.Call(typeof(Task), nameof(Task.FromResult), new[] { target.ReturnType },
+                    return (svc, args) => Expression.Call(typeof(Task), nameof(Task.FromResult), new[] { target.ReturnType },
                         Expression.Call(svc, target, args));
                 }
 
                 #endregion
 
-                foreach (var method in svcType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                foreach (var method in serviceContract.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
                 {
                     try
                     {
+                        if (isPublicContract && !Attribute.IsDefined(method, typeof(OperationContractAttribute)))
+                            continue; // for methods on the class (not a service contract interface): demand [OperationContract]
+
                         var outType = method.ReturnType;
                         if (outType == null) continue;
 
@@ -131,12 +148,12 @@ namespace ProtoBuf.Grpc.Server
                         }
                         if (bound)
                         {
-                            _logger.Log(LogLevel.Warning, "Bound {0}.{1}", svcType.Name, method.Name);
+                            _logger.Log(LogLevel.Warning, "Bound {0}.{1}", serviceContract.Name, method.Name);
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.Log(LogLevel.Error, "Unable to bind {0}.{1}: {2}", svcType.Name, method.Name, ex.Message);
+                        _logger.Log(LogLevel.Error, "Unable to bind {0}.{1}: {2}", serviceContract.Name, method.Name, ex.Message);
                     }
                 }
             }
@@ -155,7 +172,7 @@ namespace ProtoBuf.Grpc.Server
             where TRequest : class
             where TResponse : class
         {
-            var oca = (OperationContractAttribute?)Attribute.GetCustomAttribute(method, typeof(OperationContractAttribute));
+            var oca = (OperationContractAttribute?)Attribute.GetCustomAttribute(method, typeof(OperationContractAttribute), inherit: true);
             var operationName = oca?.Name;
             if (string.IsNullOrWhiteSpace(operationName))
             {

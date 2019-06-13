@@ -152,7 +152,13 @@ namespace GRPCServer
 }
 
 [ServiceContract(Name = "Greet.Greeter")] // only needed to explicitly specify service name
-class CodeFirstGreeterService // (otherwise, the type's full name is used, i.e. {namespace}.{typename})
+interface IGreeterService
+{
+    CodeFirstGreeterService.HelloReply SayHello(CodeFirstGreeterService.HelloRequest request, ServerCallContext context);
+}
+
+[ServiceContract(Name = "Greet.Greeter")]
+class CodeFirstGreeterService : IGreeterService // (otherwise, the type's full name is used, i.e. {namespace}.{typename})
 {
     // note: currently only very specific API signatures are supported, as it needs to match
     // the signature that the underlying google API uses; a +1 feature would be to support
@@ -180,12 +186,13 @@ class CodeFirstGreeterService // (otherwise, the type's full name is used, i.e. 
     //    return Task.FromResult(new HelloReply { Message = "Hello " + request.Name });
     //}
 
-    public HelloReply SayHello(HelloRequest request, ServerCallContext _)
+    HelloReply IGreeterService.SayHello(HelloRequest request, ServerCallContext _)
     {
         _logger.LogInformation($"Sending **sync** hello to {request.Name}");
-        return new HelloReply { Message = "Hello " + request.Name };
+        return new HelloReply { Message = "Hello (explicit interface impl) " + request.Name };
     }
 
+    [OperationContract]
     public async Task SayHellosAsync(HelloRequest request, IServerStreamWriter<HelloReply> responseStream, ServerCallContext context)
     {
         var httpContext = context.GetHttpContext();
