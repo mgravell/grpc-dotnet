@@ -1,5 +1,7 @@
 ﻿using Grpc.Core;
 using ProtoBuf.Grpc.Internal;
+using protobuf_net.Grpc;
+using System.Threading.Tasks;
 
 namespace SharedContract
 {
@@ -14,9 +16,17 @@ namespace SharedContract
 
         private const string SERVICE_NAME = "Greet.Greeter";
         public override string ToString() => SERVICE_NAME;
+#pragma warning disable CS0618
+        // ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request)
+        //  => Reshape.AsValueTask<HelloReply>(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, default, request));
 
-        AsyncUnaryCall<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallOptions options)
-           => CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, options, request);
+        ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallContext context)
+            => Reshape.AsValueTask<HelloReply>(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, context, request));
+
+        //
+        //        ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallOptions options)
+        //            => Reshape.AsValueTask(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, options, request));
+#pragma warning restore CS0618
 
         //AsyncServerStreamingCall<HelloReply> IGreeter.SayHellos(HelloRequest request, CallOptions options)
         //   => CallInvoker.AsyncServerStreamingCall(s_SayHellosAsync, null, options, request);

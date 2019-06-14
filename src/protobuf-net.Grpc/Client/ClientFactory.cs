@@ -9,6 +9,8 @@ using System.ServiceModel;
 using ProtoBuf.Grpc.Internal;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using protobuf_net.Grpc;
 
 namespace ProtoBuf.Grpc.Client
 {
@@ -56,12 +58,20 @@ namespace ProtoBuf.Grpc.Client
             private static readonly ModuleBuilder s_module = AssemblyBuilder.DefineDynamicAssembly(
                     new AssemblyName(ProxyIdentity), AssemblyBuilderAccess.Run).DefineDynamicModule(ProxyIdentity);
 
-            private static readonly MethodInfo s_callInvoker = typeof(ClientBase).GetProperty(nameof(CallInvoker),
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetGetMethod(true)!;
+            private static readonly MethodInfo
+                s_callInvoker = typeof(ClientBase).GetProperty(nameof(CallInvoker),
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetGetMethod(true)!,
+                s_callContext_Client = typeof(CallContext).GetProperty(nameof(CallContext.Client),
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetGetMethod(true)!,
+#pragma warning disable CS0618
+                s_reshapeTaskT = typeof(Reshape).GetMethod(nameof(Reshape.AsTask), BindingFlags.Public | BindingFlags.Static)!,
+                s_reshapeValueTaskT = typeof(Reshape).GetMethod(nameof(Reshape.AsValueTask), BindingFlags.Public | BindingFlags.Static)!,
+                s_reshapeSyncT = typeof(Reshape).GetMethod(nameof(Reshape.AsSync), BindingFlags.Public | BindingFlags.Static)!;
+#pragma warning restore CS0618
 
             private static void Ldc_I4(ILGenerator il, int value)
             {
-                switch(value)
+                switch (value)
                 {
                     case -1: il.Emit(OpCodes.Ldc_I4_M1); break;
                     case 0: il.Emit(OpCodes.Ldc_I4_0); break;
@@ -73,7 +83,38 @@ namespace ProtoBuf.Grpc.Client
                     case 6: il.Emit(OpCodes.Ldc_I4_6); break;
                     case 7: il.Emit(OpCodes.Ldc_I4_7); break;
                     case 8: il.Emit(OpCodes.Ldc_I4_8); break;
+                    case int i when (i >= -128 & i < 127): il.Emit(OpCodes.Ldc_I4_S, (sbyte)i); break;
                     default: il.Emit(OpCodes.Ldc_I4, value); break;
+                }
+            }
+
+            private static void LoadDefault<T>(ILGenerator il) where T : struct
+            {
+                var local = il.DeclareLocal(typeof(T));
+                Ldloca(il, local);
+                il.Emit(OpCodes.Initobj, typeof(T));
+                Ldloc(il, local);
+            }
+
+            private static void Ldloc(ILGenerator il, LocalBuilder local)
+            {
+                switch(local.LocalIndex)
+                {
+                    case 0: il.Emit(OpCodes.Ldloc_0); break;
+                    case 1: il.Emit(OpCodes.Ldloc_1); break;
+                    case 2: il.Emit(OpCodes.Ldloc_2); break;
+                    case 3: il.Emit(OpCodes.Ldloc_3); break;
+                    case int i when (i >= 0 & i <= 255): il.Emit(OpCodes.Ldloc_S, (byte)i); break;
+                    default: il.Emit(OpCodes.Ldloc, local); break;
+                }
+            }
+
+            private static void Ldloca(ILGenerator il, LocalBuilder local)
+            {
+                switch(local.LocalIndex)
+                {
+                    case int i when (i >= 0 & i <= 255): il.Emit(OpCodes.Ldloca_S, (byte)i); break;
+                    default: il.Emit(OpCodes.Ldloca, local); break;
                 }
             }
 
@@ -85,14 +126,16 @@ namespace ProtoBuf.Grpc.Client
                 public MethodInfo Method { get; }
                 public Type[] ParameterTypes { get; }
                 public MethodType MethodType { get; }
+                public ContextKind Context { get; }
 
-                public ContractOperation(string name, Type from, Type to, MethodInfo method, MethodType methodType, Type[] parameterTypes)
+                public ContractOperation(string name, Type from, Type to, MethodInfo method, MethodType methodType, ContextKind contextKind, Type[] parameterTypes)
                 {
                     Name = name;
                     From = from;
                     To = to;
                     Method = method;
                     MethodType = methodType;
+                    Context = contextKind;
                     ParameterTypes = parameterTypes;
                 }
 
@@ -129,18 +172,65 @@ namespace ProtoBuf.Grpc.Client
 
                         var parameters = method.GetParameters();
 
-                        if (parameters.Length == 0) continue; // no way of inferring anything!
+                        if (parameters.Length == 0 || parameters.Length > 2) continue; // no way of inferring anything!
+
+                        ContextKind? contextKind = null;
+                        if (parameters.Length == 1)
+                        {
+                            contextKind = ContextKind.None;
+                        }
+                        else if (parameters[1].ParameterType == typeof(CallOptions))
+                        {
+                            contextKind = ContextKind.CallOptions;
+                        }
+                        else if (parameters[1].ParameterType == typeof(CallContext))
+                        {
+                            contextKind = ContextKind.CallContext;
+                        }
+                        if (contextKind == null) continue; // unknown context type
 
                         // for testing, I've only implemented unary naked
                         Type[] types = Array.ConvertAll(parameters, x => x.ParameterType);
-                        Type from = types[0], to = method.ReturnType.GetGenericArguments().Single(); // async-unary<T> => T
+                        Type from = types[0], to = method.ReturnType;
+                        if (to.IsGenericType)
+                        {
+                            var genType = to.GetGenericTypeDefinition();
+                            if (genType == typeof(AsyncUnaryCall<>) || genType == typeof(Task<>) || genType == typeof(ValueTask<>))
+                            {
+                                to = to.GetGenericArguments()[0];
+                            }
+                        }
                         MethodType methodType = MethodType.Unary;
-                        ops.Add(new ContractOperation(opName, from, to, method, methodType, types));
+
+                        ops.Add(new ContractOperation(opName, from, to, method, methodType, contextKind.Value, types));
                     }
                     return ops;
                 }
+
+                internal bool IsSyncT()
+                {
+                    return Method.ReturnType == To;
+                }
+                internal bool IsTaskT()
+                {
+                    var ret = Method.ReturnType;
+                    return ret.IsGenericType && ret.GetGenericTypeDefinition() == typeof(Task<>)
+                        && ret.GetGenericArguments()[0] == To;
+                }
+                internal bool IsValueTaskT()
+                {
+                    var ret = Method.ReturnType;
+                    return ret.IsGenericType && ret.GetGenericTypeDefinition() == typeof(ValueTask<>)
+                        && ret.GetGenericArguments()[0] == To;
+                }
             }
-            
+
+            internal enum ContextKind
+            {
+                None, // no context
+                CallOptions, // GRPC core client context kind
+                CallContext, // pb-net shared context kind
+            }
 
             internal static Func<HttpClient, ILoggerFactory?, TService> CreateFactory<TService>()
                where TService : class
@@ -207,11 +297,40 @@ namespace ProtoBuf.Grpc.Client
                         il.EmitCall(OpCodes.Callvirt, s_callInvoker, null); // get_CallInvoker
                         il.Emit(OpCodes.Ldsfld, field); // method
                         il.Emit(OpCodes.Ldnull); // host: always null
-                        il.Emit(OpCodes.Ldarg_2); // options
+                        switch (op.Context)
+                        {
+                            case ContextKind.None:
+                                LoadDefault<CallOptions>(il);
+                                break;
+                            case ContextKind.CallOptions:
+                                il.Emit(OpCodes.Ldarg_2); // options
+                                break;
+                            case ContextKind.CallContext:
+                                il.Emit(OpCodes.Ldarga_S, (byte)2);
+                                il.EmitCall(OpCodes.Call, s_callContext_Client, null);
+                                break;
+                            default:
+                                throw new NotSupportedException("Unsupported call-context kind: " + op.Context);
+                        }
+
                         il.Emit(OpCodes.Ldarg_1); // request
 
                         // this.CallInvoker.AsyncUnaryCall<From,To>(method, host, options, request)
                         il.EmitCall(OpCodes.Callvirt, typeof(CallInvoker).GetMethod(nameof(CallInvoker.AsyncUnaryCall))!.MakeGenericMethod(fromTo), null);
+
+                        if (op.IsSyncT())
+                        {
+                            il.EmitCall(OpCodes.Call, s_reshapeSyncT.MakeGenericMethod(op.To), null);
+                        }
+                        else if (op.IsTaskT())
+                        {
+                            il.EmitCall(OpCodes.Call, s_reshapeTaskT.MakeGenericMethod(op.To), null);
+                        }
+                        else if (op.IsValueTaskT())
+                        {
+                            il.EmitCall(OpCodes.Call, s_reshapeValueTaskT.MakeGenericMethod(op.To), null);
+                        }
+
                         il.Emit(OpCodes.Ret); // return
 
                         // mark it as the interface implementation
@@ -223,10 +342,10 @@ namespace ProtoBuf.Grpc.Client
                     // return the factory method
                     return (Func<HttpClient, ILoggerFactory?, TService>)Delegate.CreateDelegate(typeof(Func<HttpClient, ILoggerFactory?, TService>), null,
                         typeof(ClientFactory).GetMethod(nameof(CreateService), BindingFlags.Public | BindingFlags.Static)!.MakeGenericMethod(new[] { type.CreateType(), typeof(TService) }));
-                    
+
                     void WritePassThruCtor<T>(MethodAttributes accessibility)
                     {
-                        var signature = new [] { typeof(T) };
+                        var signature = new[] { typeof(T) };
                         var baseCtor = baseType.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, signature, null);
                         if (baseCtor != null)
                         {

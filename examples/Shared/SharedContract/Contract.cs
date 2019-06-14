@@ -1,6 +1,8 @@
 ﻿using Grpc.Core;
 using ProtoBuf;
+using protobuf_net.Grpc;
 using System.ServiceModel;
+using System.Threading.Tasks;
 
 namespace SharedContract
 {
@@ -30,8 +32,7 @@ namespace SharedContract
     [ServiceContract(Name = "Greet.Greeter")]
     public interface IGreeter
     {
-        // this is the inital version that assumes same client API as google
-        AsyncUnaryCall<HelloReply> SayHelloAsync(HelloRequest request, CallOptions options = default);
+        ValueTask<HelloReply> SayHelloAsync(HelloRequest request, CallContext context = default);
         //AsyncServerStreamingCall<HelloReply> SayHellos(HelloRequest request, CallOptions options = default);
     }
 }

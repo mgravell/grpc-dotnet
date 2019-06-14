@@ -6,23 +6,26 @@ namespace protobuf_net.Grpc
 {
     public readonly struct CallContext
     {
-        public CallOptions? Client => Server == null ? _client : default;
+        public CallOptions Client { get; }
         public ServerCallContext? Server { get; }
 
-        public Metadata RequestHeaders => Server == null ? _client.Headers : Server.RequestHeaders;
-        public CancellationToken CancellationToken => Server == null ? _client.CancellationToken : Server.CancellationToken;
-        public DateTime? Deadline => Server == null ? _client.Deadline : Server.Deadline;
+        public Metadata RequestHeaders => Server == null ? Client.Headers : Server.RequestHeaders;
+        public CancellationToken CancellationToken => Server == null ? Client.CancellationToken : Server.CancellationToken;
+        public DateTime? Deadline => Server?.Deadline ?? Client.Deadline;
 
-        private readonly CallOptions _client;
+        public static implicit operator CallContext(in CallOptions client) => new CallContext(client);
+        public static implicit operator CallContext(ServerCallContext server) => new CallContext(server);
+        public static implicit operator CallOptions(in CallContext context) => context.Client;
+        public static implicit operator ServerCallContext?(in CallContext context) => context.Server;
 
-        public CallContext(ServerCallContext context)
+        public CallContext(ServerCallContext server)
         {
-            _client = default;
-            Server = context;
+            Client = default;
+            Server = server;
         }
-        public CallContext(CallOptions client)
+        public CallContext(in CallOptions client)
         {
-            _client = client;
+            Client = client;
             Server = default;
         }
     }
