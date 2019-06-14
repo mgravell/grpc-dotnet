@@ -7,6 +7,7 @@ using System.Reflection.Emit;
 using Grpc.Net.Client;
 using System.ServiceModel;
 using ProtoBuf.Grpc.Internal;
+using System.Collections.Generic;
 
 namespace ProtoBuf.Grpc.Client
 {
@@ -75,15 +76,77 @@ namespace ProtoBuf.Grpc.Client
                 }
             }
 
+            private readonly struct ContractOperation
+            {
+                public string Name { get; }
+                public Type From { get; }
+                public Type To { get; }
+                public MethodInfo Method { get; }
+                public Type[] ParameterTypes { get; }
+                public MethodType MethodType { get; }
+
+                public ContractOperation(string name, Type from, Type to, MethodInfo method, MethodType methodType, Type[] parameterTypes)
+                {
+                    Name = name;
+                    From = from;
+                    To = to;
+                    Method = method;
+                    MethodType = methodType;
+                    ParameterTypes = parameterTypes;
+                }
+
+                public static bool TryGetServiceName(Type contractType, out string? serviceName, bool demandAttribute = false)
+                {
+                    var sca = (ServiceContractAttribute?)Attribute.GetCustomAttribute(contractType, typeof(ServiceContractAttribute), inherit: true);
+                    if (demandAttribute && sca == null)
+                    {
+                        serviceName = null;
+                        return false;
+                    }
+                    serviceName = sca?.Name;
+                    if (string.IsNullOrWhiteSpace(serviceName)) serviceName = contractType.Name;
+                    return !string.IsNullOrWhiteSpace(serviceName);
+                }
+
+                public static List<ContractOperation> FindOperations(Type contractType, bool demandAttribute = false)
+                {
+                    var ops = new List<ContractOperation>();
+                    foreach (var method in contractType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                    {
+                        if (method.IsGenericMethodDefinition) continue; // can't work with <T> methods
+
+                        var oca = (OperationContractAttribute?)Attribute.GetCustomAttribute(method, typeof(OperationContractAttribute), inherit: true);
+                        if (demandAttribute && oca == null) continue;
+                        string? opName = oca?.Name;
+                        if (string.IsNullOrWhiteSpace(opName)) opName = method.Name;
+                        if (string.IsNullOrWhiteSpace(opName)) continue;
+
+                        var parameters = method.GetParameters();
+
+                        if (parameters.Length == 0) continue; // no way of inferring anything!
+
+                        // for testing, I've only implemented unary naked
+                        Type[] types = Array.ConvertAll(parameters, x => x.ParameterType);
+                        Type from = types[0], to = method.ReturnType;
+                        MethodType methodType = MethodType.Unary;
+                        ops.Add(new ContractOperation(opName, from, to, method, methodType, types));
+                    }
+                    return ops;
+                }
+            }
+            
+
             internal static Func<HttpClient, ILoggerFactory?, TService> CreateFactory<TService>()
                where TService : class
             {
+                // front-load reflection discovery
+                if (!typeof(TService).IsInterface)
+                    throw new InvalidOperationException("Type is not an interface: " + typeof(TService).FullName);
+                ContractOperation.TryGetServiceName(typeof(TService), out var serviceName);
+                var ops = ContractOperation.FindOperations(typeof(TService));
+
                 lock (s_module)
                 {
-                    var sca = (ServiceContractAttribute?)Attribute.GetCustomAttribute(typeof(TService), typeof(ServiceContractAttribute), inherit: true);
-                    string? serviceName = sca?.Name;
-                    if (string.IsNullOrWhiteSpace(serviceName)) serviceName = typeof(TService).Name;
-
                     // private sealed class IFooProxy...
                     var type = s_module.DefineType(ProxyIdentity + "." + typeof(TService).Name + "Proxy",
                         TypeAttributes.Class | TypeAttributes.Sealed | TypeAttributes.NotPublic | TypeAttributes.BeforeFieldInit);
@@ -111,33 +174,21 @@ namespace ProtoBuf.Grpc.Client
                     
                     // add each method of the interface
                     int fieldIndex = 0;
-                    foreach (var method in typeof(TService).GetMethods())
+                    foreach (var op in ops)
                     {
-                        var oca = (OperationContractAttribute?)Attribute.GetCustomAttribute(method, typeof(OperationContractAttribute), inherit: true);
-                        string? opName = oca?.Name;
-                        if (string.IsNullOrWhiteSpace(opName)) opName = method.Name;
-                        if (string.IsNullOrWhiteSpace(opName)) continue;
-
-                        // for testing, I've only implemented unary naked
-
-                        var parameters = method.GetParameters();
-                        var impl = type.DefineMethod(typeof(TService).Name + "." + method.Name,
+                        var impl = type.DefineMethod(typeof(TService).Name + "." + op.Method.Name,
                             MethodAttributes.HideBySig | MethodAttributes.Final | MethodAttributes.NewSlot | MethodAttributes.Private | MethodAttributes.Virtual,
-                            method.CallingConvention, method.ReturnType, Array.ConvertAll(parameters, p => p.ParameterType));
+                            op.Method.CallingConvention, op.Method.ReturnType, op.ParameterTypes);
                         
 
-                        Type from = parameters[0].ParameterType, to = method.ReturnType;
-                        MethodType methodType = MethodType.Unary;
-
-
-                        Type[] fromTo = new Type[] { from, to };
+                        Type[] fromTo = new Type[] { op.From, op.To };
                         // static readonly Method<from, to> s_SayHellosAsync
                         var field = type.DefineField("s_" + fieldIndex++, typeof(Method<,>).MakeGenericType(fromTo), FieldAttributes.Static | FieldAttributes.Private | FieldAttributes.InitOnly);
                         // = new FullyNamedMethod<from, to>(opName, methodType, serviceName, method.Name);
-                        cctor.Emit(OpCodes.Ldstr, opName);
-                        Ldc_I4(cctor, (int) methodType);
+                        cctor.Emit(OpCodes.Ldstr, op.Name);
+                        Ldc_I4(cctor, (int) op.MethodType);
                         cctor.Emit(OpCodes.Ldstr, serviceName);
-                        cctor.Emit(OpCodes.Ldstr, method.Name);
+                        cctor.Emit(OpCodes.Ldstr, op.Method.Name);
                         cctor.Emit(OpCodes.Newobj, typeof(FullyNamedMethod<,>).MakeGenericType(fromTo));
                         cctor.Emit(OpCodes.Stsfld, field);
 
@@ -158,7 +209,7 @@ namespace ProtoBuf.Grpc.Client
                         il.Emit(OpCodes.Ret); // return
 
                         // mark it as the interface implementation
-                        type.DefineMethodOverride(impl, method);
+                        type.DefineMethodOverride(impl, op.Method);
 
 
                     }
