@@ -62,6 +62,9 @@ namespace ProtoBuf.Grpc.Client
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetGetMethod(true)!,
                 s_callContext_Client = typeof(CallContext).GetProperty(nameof(CallContext.Client),
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetGetMethod(true)!,
+                s_callContext_Metadata = typeof(CallContext).GetMethods(BindingFlags.Public | BindingFlags.Static).Single(
+                    x => x.Name == "op_Implicit" && x.ReturnType == typeof(MetadataContext)),
+
 #pragma warning disable CS0618
                 s_reshapeTaskT = typeof(Reshape).GetMethod(nameof(Reshape.AsTask), BindingFlags.Public | BindingFlags.Static)!,
                 s_reshapeValueTaskT = typeof(Reshape).GetMethod(nameof(Reshape.AsValueTask), BindingFlags.Public | BindingFlags.Static)!,
@@ -319,15 +322,29 @@ namespace ProtoBuf.Grpc.Client
 
                         if (op.IsSyncT())
                         {
-                            il.EmitCall(OpCodes.Call, s_reshapeSyncT.MakeGenericMethod(op.To), null);
+                            EmitStandardReshape(s_reshapeSyncT);
                         }
                         else if (op.IsTaskT())
                         {
-                            il.EmitCall(OpCodes.Call, s_reshapeTaskT.MakeGenericMethod(op.To), null);
+                            EmitStandardReshape(s_reshapeTaskT);
                         }
                         else if (op.IsValueTaskT())
                         {
-                            il.EmitCall(OpCodes.Call, s_reshapeValueTaskT.MakeGenericMethod(op.To), null);
+                            EmitStandardReshape(s_reshapeValueTaskT);
+                        }
+                        void EmitStandardReshape(MethodInfo reshaper)
+                        {
+                            switch(op.Context)
+                            {
+                                case ContextKind.CallContext:
+                                    il.Emit(OpCodes.Ldarga_S, (byte)2);
+                                    il.EmitCall(OpCodes.Call, s_callContext_Metadata, null);
+                                    break;
+                                default:
+                                    il.Emit(OpCodes.Ldnull); // no metadata capture
+                                    break;
+                            }
+                            il.EmitCall(OpCodes.Call, reshaper.MakeGenericMethod(op.To), null);
                         }
 
                         il.Emit(OpCodes.Ret); // return

@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Common;
 using Grpc.Core;
 using Grpc.Net.Client;
+using ProtoBuf.Grpc;
 using ProtoBuf.Grpc.Client;
 
 namespace Sample.Clients
@@ -53,8 +54,14 @@ namespace Sample.Clients
         }
         private static async Task UnaryCallExample(SharedContract.IGreeter client)
         {
-            var reply = await client.SayHelloAsync(new SharedContract.HelloRequest { Name = "GreeterClient" });
+            var callContext = new CallContext(default, CallContextFlags.CaptureMetadata);
+            var reply = await client.SayHelloAsync(new SharedContract.HelloRequest { Name = "GreeterClient" }, callContext);
             Console.WriteLine("Greeting: " + reply.Message);
+            Console.WriteLine(callContext.ResponseHeaders.Count);
+            foreach(var header in callContext.ResponseHeaders)
+            {
+                Console.WriteLine($"{header.Key}={header.Value}");
+            }
         }
 
         private static async Task ServerStreamingCallExample(Greet.Greeter.GreeterClient client)

@@ -21,7 +21,7 @@ namespace SharedContract
         //  => Reshape.AsValueTask<HelloReply>(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, default, request));
 
         ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallContext context)
-            => Reshape.AsValueTask<HelloReply>(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, context, request));
+            => Reshape.AsValueTask<HelloReply>(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, context, request), context);
 
         //
         //        ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallOptions options)

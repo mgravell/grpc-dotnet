@@ -1,6 +1,9 @@
 ﻿using Grpc.Core;
+using ProtoBuf.Grpc.Internal;
 using System;
 using System.Threading;
+using System.Runtime.CompilerServices;
+using System.ComponentModel;
 
 namespace ProtoBuf.Grpc
 {
@@ -19,20 +22,42 @@ namespace ProtoBuf.Grpc
         public DateTime? Deadline => Server?.Deadline ?? Client.Deadline;
         public WriteOptions WriteOptions => Server?.WriteOptions ?? Client.WriteOptions;
 
-        public static implicit operator CallContext(in CallOptions client) => new CallContext(client);
-        public static implicit operator CallContext(ServerCallContext server) => new CallContext(server);
         public static implicit operator CallOptions(in CallContext context) => context.Client;
-        public static implicit operator ServerCallContext?(in CallContext context) => context.Server;
+
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
+        public static implicit operator MetadataContext?(in CallContext context) => context._metadataContext;
 
         public CallContext(ServerCallContext server)
         {
             Client = default;
             Server = server;
+            _metadataContext = null;
         }
-        public CallContext(in CallOptions client)
+        public CallContext(in CallOptions client, CallContextFlags flags = CallContextFlags.None)
         {
             Client = client;
             Server = default;
+            _metadataContext = (flags & CallContextFlags.CaptureMetadata) == 0 ? null : new MetadataContext();
         }
+
+        private readonly MetadataContext? _metadataContext;
+
+        public Metadata ResponseHeaders => _metadataContext?.Headers ?? ThrowNoContext();
+
+        public Metadata ResponseTrailers => _metadataContext?.Trailers ?? ThrowNoContext();
+
+        [MethodImpl]
+        private Metadata ThrowNoContext()
+        {
+            if (Server != null) throw new InvalidOperationException("Response metadata is not available for server contexts");
+            throw new InvalidOperationException("The CaptureMetadata flag must be specified when creating the CallContext to enable response metadata");
+        }
+    }
+
+    [Flags]
+    public enum CallContextFlags
+    {
+        None = 0,
+        CaptureMetadata = 1,
     }
 }
