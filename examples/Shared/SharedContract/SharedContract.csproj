@@ -7,7 +7,7 @@
   <ItemGroup>
     <PackageReference Include="Grpc.Core.Api" Version="$(GrpcPackageVersion)" />
     <PackageReference Include="Grpc.Core" Version="$(GrpcPackageVersion)" />
-    <PackageReference Include="protobuf-net" Version="2.4.0" />
+    <PackageReference Include="protobuf-net" Version="3.0.0-alpha.43" />
   </ItemGroup>
 
   <ItemGroup>
