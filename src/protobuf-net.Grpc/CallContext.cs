@@ -4,6 +4,11 @@ using System.Threading;
 
 namespace protobuf_net.Grpc
 {
+    /// <summary>
+    /// Unifies the API for client and server gRPC call contexts; the API intersection is available
+    /// directly - for client-specific or server-specific options: use .Client or .Server; note that
+    /// whether this is a client or server context depends on the usage. Silent conversions are available.
+    /// </summary>
     public readonly struct CallContext
     {
         public CallOptions Client { get; }
@@ -12,6 +17,7 @@ namespace protobuf_net.Grpc
         public Metadata RequestHeaders => Server == null ? Client.Headers : Server.RequestHeaders;
         public CancellationToken CancellationToken => Server == null ? Client.CancellationToken : Server.CancellationToken;
         public DateTime? Deadline => Server?.Deadline ?? Client.Deadline;
+        public WriteOptions WriteOptions => Server?.WriteOptions ?? Client.WriteOptions;
 
         public static implicit operator CallContext(in CallOptions client) => new CallContext(client);
         public static implicit operator CallContext(ServerCallContext server) => new CallContext(server);
