@@ -15,14 +15,14 @@ namespace SharedContract
         private const string SERVICE_NAME = "Greet.Greeter";
         public override string ToString() => SERVICE_NAME;
 
-        AsyncUnaryCall<HelloReply> IGreeter.SayHello(HelloRequest request, CallOptions options)
+        AsyncUnaryCall<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallOptions options)
            => CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, options, request);
 
         //AsyncServerStreamingCall<HelloReply> IGreeter.SayHellos(HelloRequest request, CallOptions options)
         //   => CallInvoker.AsyncServerStreamingCall(s_SayHellosAsync, null, options, request);
 
-        static readonly Method<HelloRequest, HelloReply> s_SayHelloAsync = new FullyNamedMethod<HelloRequest, HelloReply>(
-           "SayHello", MethodType.Unary, SERVICE_NAME, nameof(IGreeter.SayHello));
+        static readonly Method<HelloRequest, HelloReply> s_SayHelloAsync =
+            new FullyNamedMethod<HelloRequest, HelloReply>("SayHello", MethodType.Unary, SERVICE_NAME);
 
         //static readonly Method<HelloRequest, HelloReply> s_SayHellosAsync = new FullyNamedMethod<HelloRequest, HelloReply>(
         //   "SayHellos", MethodType.ServerStreaming, SERVICE_NAME, nameof(IGreeter.SayHellos));

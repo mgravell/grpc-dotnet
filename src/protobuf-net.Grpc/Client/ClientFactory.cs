@@ -8,6 +8,7 @@ using Grpc.Net.Client;
 using System.ServiceModel;
 using ProtoBuf.Grpc.Internal;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ProtoBuf.Grpc.Client
 {
@@ -118,7 +119,12 @@ namespace ProtoBuf.Grpc.Client
                         var oca = (OperationContractAttribute?)Attribute.GetCustomAttribute(method, typeof(OperationContractAttribute), inherit: true);
                         if (demandAttribute && oca == null) continue;
                         string? opName = oca?.Name;
-                        if (string.IsNullOrWhiteSpace(opName)) opName = method.Name;
+                        if (string.IsNullOrWhiteSpace(opName))
+                        {
+                            opName = method.Name;
+                            if (opName.EndsWith("Async"))
+                                opName = opName.Substring(0, opName.Length - 5);
+                        }
                         if (string.IsNullOrWhiteSpace(opName)) continue;
 
                         var parameters = method.GetParameters();
@@ -127,7 +133,7 @@ namespace ProtoBuf.Grpc.Client
 
                         // for testing, I've only implemented unary naked
                         Type[] types = Array.ConvertAll(parameters, x => x.ParameterType);
-                        Type from = types[0], to = method.ReturnType;
+                        Type from = types[0], to = method.ReturnType.GetGenericArguments().Single(); // async-unary<T> => T
                         MethodType methodType = MethodType.Unary;
                         ops.Add(new ContractOperation(opName, from, to, method, methodType, types));
                     }
@@ -148,7 +154,7 @@ namespace ProtoBuf.Grpc.Client
                 lock (s_module)
                 {
                     // private sealed class IFooProxy...
-                    var type = s_module.DefineType(ProxyIdentity + "." + typeof(TService).Name + "Proxy",
+                    var type = s_module.DefineType(ProxyIdentity + "." + typeof(TService).Name + "_Proxy",
                         TypeAttributes.Class | TypeAttributes.Sealed | TypeAttributes.NotPublic | TypeAttributes.BeforeFieldInit);
 
                     // : ClientBase
@@ -171,35 +177,35 @@ namespace ProtoBuf.Grpc.Client
                     WritePassThruCtor<ClientBaseConfiguration>(MethodAttributes.Family);
 
                     var cctor = type.DefineTypeInitializer().GetILGenerator();
-                    
+
                     // add each method of the interface
                     int fieldIndex = 0;
                     foreach (var op in ops)
                     {
+                        Type[] fromTo = new Type[] { op.From, op.To };
+                        // public static readonly Method<from, to> s_{i}
+                        var field = type.DefineField("s_op_" + fieldIndex++, typeof(Method<,>).MakeGenericType(fromTo),
+                            FieldAttributes.Static | FieldAttributes.Public | FieldAttributes.InitOnly);
+                        // = new FullyNamedMethod<from, to>(opName, methodType, serviceName, method.Name);
+                        cctor.Emit(OpCodes.Ldstr, op.Name); // opName
+                        Ldc_I4(cctor, (int)op.MethodType); // methodType
+                        cctor.Emit(OpCodes.Ldstr, serviceName); // serviceName
+                        cctor.Emit(OpCodes.Ldnull); // methodName: leave null (uses opName)
+                        cctor.Emit(OpCodes.Ldnull); // requestMarshaller: always null
+                        cctor.Emit(OpCodes.Ldnull); // responseMarshaller: always null
+                        cctor.Emit(OpCodes.Newobj, typeof(FullyNamedMethod<,>).MakeGenericType(fromTo)
+                            .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).Single()); // new FullyNamedMethod
+                        cctor.Emit(OpCodes.Stsfld, field);
+
                         var impl = type.DefineMethod(typeof(TService).Name + "." + op.Method.Name,
                             MethodAttributes.HideBySig | MethodAttributes.Final | MethodAttributes.NewSlot | MethodAttributes.Private | MethodAttributes.Virtual,
                             op.Method.CallingConvention, op.Method.ReturnType, op.ParameterTypes);
-                        
-
-                        Type[] fromTo = new Type[] { op.From, op.To };
-                        // static readonly Method<from, to> s_SayHellosAsync
-                        var field = type.DefineField("s_" + fieldIndex++, typeof(Method<,>).MakeGenericType(fromTo), FieldAttributes.Static | FieldAttributes.Private | FieldAttributes.InitOnly);
-                        // = new FullyNamedMethod<from, to>(opName, methodType, serviceName, method.Name);
-                        cctor.Emit(OpCodes.Ldstr, op.Name);
-                        Ldc_I4(cctor, (int) op.MethodType);
-                        cctor.Emit(OpCodes.Ldstr, serviceName);
-                        cctor.Emit(OpCodes.Ldstr, op.Method.Name);
-                        cctor.Emit(OpCodes.Newobj, typeof(FullyNamedMethod<,>).MakeGenericType(fromTo));
-                        cctor.Emit(OpCodes.Stsfld, field);
 
                         // implement the method
                         var il = impl.GetILGenerator();
                         il.Emit(OpCodes.Ldarg_0); // this.
                         il.EmitCall(OpCodes.Callvirt, s_callInvoker, null); // get_CallInvoker
-
-                        il.Emit(OpCodes.Ldsfld, field); // method - BadImageFormatException: Bad method token; what the hell?
-                        // il.Emit(OpCodes.Ldnull); // method - this is NRE, obviously - but it isn't bad image
-
+                        il.Emit(OpCodes.Ldsfld, field); // method
                         il.Emit(OpCodes.Ldnull); // host: always null
                         il.Emit(OpCodes.Ldarg_2); // options
                         il.Emit(OpCodes.Ldarg_1); // request
@@ -210,8 +216,6 @@ namespace ProtoBuf.Grpc.Client
 
                         // mark it as the interface implementation
                         type.DefineMethodOverride(impl, op.Method);
-
-
                     }
 
                     cctor.Emit(OpCodes.Ret); // end the type initializer

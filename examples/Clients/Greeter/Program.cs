@@ -32,7 +32,7 @@ namespace Sample.Clients
         {
             var httpClient = ClientResources.CreateHttpClient("localhost:50051");
             //var client = GrpcClient.Create<Greet.Greeter.GreeterClient>(httpClient);
-            //var client = ClientFactory.CreateService<SharedContract.ManualGreeterClient, SharedContract.IGreeter>(httpClient);
+            // var client = ClientFactory.CreateService<SharedContract.ManualGreeterClient, SharedContract.IGreeter>(httpClient);
             var client = ClientFactory.Create<SharedContract.IGreeter>(httpClient);
             Console.WriteLine($"client: {client.GetType().FullName}");
             Console.WriteLine("Connecting...");
@@ -53,7 +53,7 @@ namespace Sample.Clients
         }
         private static async Task UnaryCallExample(SharedContract.IGreeter client)
         {
-            var reply = await client.SayHello(new SharedContract.HelloRequest { Name = "GreeterClient" });
+            var reply = await client.SayHelloAsync(new SharedContract.HelloRequest { Name = "GreeterClient" });
             Console.WriteLine("Greeting: " + reply.Message);
         }
 
