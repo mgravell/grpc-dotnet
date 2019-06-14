@@ -1,6 +1,6 @@
 ﻿using Grpc.Core;
 using ProtoBuf;
-using protobuf_net.Grpc;
+using ProtoBuf.Grpc;
 using System.ServiceModel;
 using System.Threading.Tasks;
 
@@ -33,6 +33,7 @@ namespace SharedContract
     public interface IGreeter
     {
         ValueTask<HelloReply> SayHelloAsync(HelloRequest request, CallContext context = default);
+
         //AsyncServerStreamingCall<HelloReply> SayHellos(HelloRequest request, CallOptions options = default);
     }
 }

@@ -2,7 +2,7 @@
 using System;
 using System.Threading;
 
-namespace protobuf_net.Grpc
+namespace ProtoBuf.Grpc
 {
     /// <summary>
     /// Unifies the API for client and server gRPC call contexts; the API intersection is available

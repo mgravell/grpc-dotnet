@@ -1,6 +1,6 @@
 ﻿using Grpc.Core;
+using ProtoBuf.Grpc;
 using ProtoBuf.Grpc.Internal;
-using protobuf_net.Grpc;
 using System.Threading.Tasks;
 
 namespace SharedContract

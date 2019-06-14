@@ -10,7 +10,6 @@ using ProtoBuf.Grpc.Internal;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using protobuf_net.Grpc;
 
 namespace ProtoBuf.Grpc.Client
 {
