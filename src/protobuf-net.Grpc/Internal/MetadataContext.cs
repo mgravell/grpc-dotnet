@@ -4,7 +4,7 @@ using Grpc.Core;
 
 namespace ProtoBuf.Grpc.Internal
 {
-    public sealed class MetadataContext
+    internal sealed class MetadataContext
     {
         internal MetadataContext() { }
 

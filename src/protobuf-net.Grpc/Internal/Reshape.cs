@@ -1,15 +1,16 @@
 ﻿using Grpc.Core;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 namespace ProtoBuf.Grpc.Internal
 {
     [Obsolete("This class is intended for use by runtime-generated code; all methods can be changed without notice - it is only guaranteed to work with the internally generated code", false)]
+    [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
     public static class Reshape
     {
-
         public static TResponse UnarySync<TRequest, TResponse>(
             this in CallContext context,
             CallInvoker invoker, Method<TRequest, TResponse> method, TRequest request, string? host = null)

@@ -25,7 +25,7 @@ namespace ProtoBuf.Grpc
         public WriteOptions WriteOptions => Server?.WriteOptions ?? Client.WriteOptions;
 
         [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
-        public MetadataContext? Prepare() => _metadataContext?.Reset();
+        internal MetadataContext? Prepare() => _metadataContext?.Reset();
 
         public CallContext(ServerCallContext server)
         {
