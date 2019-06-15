@@ -32,7 +32,7 @@ namespace Sample.Clients
         static async Task Main(string[] args)
         {
             var httpClient = ClientResources.CreateHttpClient("localhost:50051");
-            // var client = GrpcClient.Create<Greet.Greeter.GreeterClient>(httpClient); // standard GRPC, .proto-style
+            // var client = GrpcClient.Create<Greet.Greeter.GreeterClient>(httpClient); // standard Google client via "protoc"
             // var client = ClientFactory.CreateService<SharedContract.ManualGreeterClient, SharedContract.IGreeter>(httpClient); // manually written test rig
             var client = ClientFactory.Create<SharedContract.IGreeter>(httpClient); // dynamically created proxy/client
             Console.WriteLine($"client: {client.GetType().FullName}");
