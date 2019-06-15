@@ -48,14 +48,12 @@ namespace Sample.Clients
 
         private static async Task UnaryCallExample(SharedContract.IGreeter client)
         {
-            // unary: returns ValueTask<T>
             var reply = await client.SayHelloAsync(new SharedContract.HelloRequest { Name = "GreeterClient" });
             Console.WriteLine("Greeting: " + reply.Message);
         }
 
         private static async Task ServerStreamingCallExample(SharedContract.IGreeter client)
         {
-            // server-streaming: returns IAsyncEnumerable<T>
             await foreach (var reply in client.SayHellos(new SharedContract.HelloRequest { Name = "GreeterClient" }))
             {
                 Console.WriteLine("Greeting: " + reply.Message);
