@@ -57,10 +57,16 @@ namespace Sample.Clients
             var callContext = new CallContext(default, CallContextFlags.CaptureMetadata);
             var reply = await client.SayHelloAsync(new SharedContract.HelloRequest { Name = "GreeterClient" }, callContext);
             Console.WriteLine("Greeting: " + reply.Message);
-            Console.WriteLine(callContext.ResponseHeaders.Count);
-            foreach(var header in callContext.ResponseHeaders)
+            var metadata = callContext.ResponseHeaders();
+            Console.WriteLine(metadata.Count);
+            foreach(var header in metadata)
             {
-                Console.WriteLine($"{header.Key}={header.Value}");
+                Console.WriteLine($"H: {header.Key}={header.Value}");
+            }
+            metadata = callContext.ResponseTrailers();
+            foreach (var header in metadata)
+            {
+                Console.WriteLine($"T: {header.Key}={header.Value}");
             }
         }
 

@@ -62,8 +62,7 @@ namespace ProtoBuf.Grpc.Client
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetGetMethod(true)!,
                 s_callContext_Client = typeof(CallContext).GetProperty(nameof(CallContext.Client),
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetGetMethod(true)!,
-                s_callContext_Metadata = typeof(CallContext).GetMethods(BindingFlags.Public | BindingFlags.Static).Single(
-                    x => x.Name == "op_Implicit" && x.ReturnType == typeof(MetadataContext)),
+                s_callContext_Prepare = typeof(CallContext).GetMethod(nameof(CallContext.Prepare), BindingFlags.Public | BindingFlags.Instance)!,
 
 #pragma warning disable CS0618
                 s_reshapeTaskT = typeof(Reshape).GetMethod(nameof(Reshape.AsTask), BindingFlags.Public | BindingFlags.Static)!,
@@ -338,7 +337,7 @@ namespace ProtoBuf.Grpc.Client
                             {
                                 case ContextKind.CallContext:
                                     il.Emit(OpCodes.Ldarga_S, (byte)2);
-                                    il.EmitCall(OpCodes.Call, s_callContext_Metadata, null);
+                                    il.EmitCall(OpCodes.Call, s_callContext_Prepare, null);
                                     break;
                                 default:
                                     il.Emit(OpCodes.Ldnull); // no metadata capture

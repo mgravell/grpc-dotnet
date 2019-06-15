@@ -9,14 +9,24 @@ namespace ProtoBuf.Grpc.Internal
         internal MetadataContext() { }
 
         private Metadata? _headers, _trailers;
-        public Metadata Headers => _headers ?? Throw("Headers are not yet available");
-        public Metadata Trailers => _trailers ?? Throw("Trailers are not yet available");
+        internal Metadata Headers
+        {
+            get => _headers ?? Throw("Headers are not yet available");
+            set => _headers = value;
+        }
+        internal Metadata Trailers
+        {
+            get => _trailers ?? Throw("Trailers are not yet available");
+            set => _trailers = value;
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static Metadata Throw(string message) => throw new InvalidOperationException(message);
 
-        internal void SetHeaders(Metadata metadata) => _headers = metadata;
-
-        internal void SetTrailers(Metadata metadata) => _trailers = metadata;
+        internal MetadataContext Reset()
+        {
+            _headers = _trailers = null;
+            return this;
+        }
     }
 }

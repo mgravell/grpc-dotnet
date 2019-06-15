@@ -22,10 +22,8 @@ namespace ProtoBuf.Grpc
         public DateTime? Deadline => Server?.Deadline ?? Client.Deadline;
         public WriteOptions WriteOptions => Server?.WriteOptions ?? Client.WriteOptions;
 
-        public static implicit operator CallOptions(in CallContext context) => context.Client;
-
         [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
-        public static implicit operator MetadataContext?(in CallContext context) => context._metadataContext;
+        public MetadataContext? Prepare() => _metadataContext?.Reset();
 
         public CallContext(ServerCallContext server)
         {
@@ -42,9 +40,9 @@ namespace ProtoBuf.Grpc
 
         private readonly MetadataContext? _metadataContext;
 
-        public Metadata ResponseHeaders => _metadataContext?.Headers ?? ThrowNoContext();
+        public Metadata ResponseHeaders() => _metadataContext?.Headers ?? ThrowNoContext();
 
-        public Metadata ResponseTrailers => _metadataContext?.Trailers ?? ThrowNoContext();
+        public Metadata ResponseTrailers() => _metadataContext?.Trailers ?? ThrowNoContext();
 
         [MethodImpl]
         private Metadata ThrowNoContext()

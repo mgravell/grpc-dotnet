@@ -2,7 +2,6 @@
 using ProtoBuf.Grpc;
 using ProtoBuf.Grpc.Internal;
 using System.Threading.Tasks;
-
 namespace SharedContract
 {
     //this is approximately what we want to emit
@@ -21,7 +20,7 @@ namespace SharedContract
         //  => Reshape.AsValueTask<HelloReply>(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, default, request));
 
         ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallContext context)
-            => Reshape.AsValueTask<HelloReply>(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, context, request), context);
+            => CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, context.Client, request).AsValueTask(context.Prepare());
 
         //
         //        ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallOptions options)
