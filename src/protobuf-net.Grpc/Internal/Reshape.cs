@@ -27,7 +27,7 @@ namespace ProtoBuf.Grpc.Internal
 
         public static T AsSync<T>(this AsyncUnaryCall<T> call, MetadataContext? context = null) => AsTask<T>(call, context).Result; // not nice, but it works; TODO: migrate to blocking
 
-        public static async IAsyncEnumerable<T> AsAsyncEnumerable<T>(AsyncServerStreamingCall<T> call, MetadataContext? context = null)
+        public static async IAsyncEnumerable<T> AsAsyncEnumerable<T>(this AsyncServerStreamingCall<T> call, MetadataContext? context = null)
         {
             using (call)
             {
