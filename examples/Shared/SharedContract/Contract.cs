@@ -1,6 +1,7 @@
 ﻿using Grpc.Core;
 using ProtoBuf;
 using ProtoBuf.Grpc;
+using System.Collections.Generic;
 using System.ServiceModel;
 using System.Threading.Tasks;
 
@@ -34,6 +35,6 @@ namespace SharedContract
     {
         ValueTask<HelloReply> SayHelloAsync(HelloRequest request, CallContext context = default);
 
-        //AsyncServerStreamingCall<HelloReply> SayHellos(HelloRequest request, CallOptions options = default);
+        IAsyncEnumerable<HelloReply> SayHellos(HelloRequest request, CallContext options = default);
     }
 }

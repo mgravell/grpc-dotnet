@@ -1,15 +1,12 @@
 ﻿using Grpc.Core;
+using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
+using ProtoBuf.Grpc.Internal;
 using System;
+using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Reflection.Emit;
-using Grpc.Net.Client;
-using System.ServiceModel;
-using ProtoBuf.Grpc.Internal;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace ProtoBuf.Grpc.Client
 {
@@ -57,18 +54,10 @@ namespace ProtoBuf.Grpc.Client
             private static readonly ModuleBuilder s_module = AssemblyBuilder.DefineDynamicAssembly(
                     new AssemblyName(ProxyIdentity), AssemblyBuilderAccess.Run).DefineDynamicModule(ProxyIdentity);
 
-            private static readonly MethodInfo
-                s_callInvoker = typeof(ClientBase).GetProperty(nameof(CallInvoker),
+            private static readonly MethodInfo s_ClientBase_CallInvoker = typeof(ClientBase).GetProperty(nameof(CallInvoker),
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetGetMethod(true)!,
-                s_callContext_Client = typeof(CallContext).GetProperty(nameof(CallContext.Client),
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetGetMethod(true)!,
-                s_callContext_Prepare = typeof(CallContext).GetMethod(nameof(CallContext.Prepare), BindingFlags.Public | BindingFlags.Instance)!,
-
-#pragma warning disable CS0618
-                s_reshapeTaskT = typeof(Reshape).GetMethod(nameof(Reshape.AsTask), BindingFlags.Public | BindingFlags.Static)!,
-                s_reshapeValueTaskT = typeof(Reshape).GetMethod(nameof(Reshape.AsValueTask), BindingFlags.Public | BindingFlags.Static)!,
-                s_reshapeSyncT = typeof(Reshape).GetMethod(nameof(Reshape.AsSync), BindingFlags.Public | BindingFlags.Static)!;
-#pragma warning restore CS0618
+                s_Object_ToString = typeof(object).GetMethod(nameof(object.ToString))!;
+            private static readonly FieldInfo s_CallContext_Default = typeof(CallContext).GetField(nameof(CallContext.Default))!;
 
             private static void Ldc_I4(ILGenerator il, int value)
             {
@@ -99,7 +88,7 @@ namespace ProtoBuf.Grpc.Client
 
             private static void Ldloc(ILGenerator il, LocalBuilder local)
             {
-                switch(local.LocalIndex)
+                switch (local.LocalIndex)
                 {
                     case 0: il.Emit(OpCodes.Ldloc_0); break;
                     case 1: il.Emit(OpCodes.Ldloc_1); break;
@@ -112,126 +101,25 @@ namespace ProtoBuf.Grpc.Client
 
             private static void Ldloca(ILGenerator il, LocalBuilder local)
             {
-                switch(local.LocalIndex)
+                switch (local.LocalIndex)
                 {
                     case int i when (i >= 0 & i <= 255): il.Emit(OpCodes.Ldloca_S, (byte)i); break;
                     default: il.Emit(OpCodes.Ldloca, local); break;
                 }
             }
-
-            private readonly struct ContractOperation
+            private static void Ldarga(ILGenerator il, ushort index)
             {
-                public string Name { get; }
-                public Type From { get; }
-                public Type To { get; }
-                public MethodInfo Method { get; }
-                public Type[] ParameterTypes { get; }
-                public MethodType MethodType { get; }
-                public ContextKind Context { get; }
-
-                public ContractOperation(string name, Type from, Type to, MethodInfo method, MethodType methodType, ContextKind contextKind, Type[] parameterTypes)
+                if (index <= 255)
                 {
-                    Name = name;
-                    From = from;
-                    To = to;
-                    Method = method;
-                    MethodType = methodType;
-                    Context = contextKind;
-                    ParameterTypes = parameterTypes;
+                    il.Emit(OpCodes.Ldarga_S, (byte)index);
                 }
-
-                public static bool TryGetServiceName(Type contractType, out string? serviceName, bool demandAttribute = false)
+                else
                 {
-                    var sca = (ServiceContractAttribute?)Attribute.GetCustomAttribute(contractType, typeof(ServiceContractAttribute), inherit: true);
-                    if (demandAttribute && sca == null)
-                    {
-                        serviceName = null;
-                        return false;
-                    }
-                    serviceName = sca?.Name;
-                    if (string.IsNullOrWhiteSpace(serviceName)) serviceName = contractType.Name;
-                    return !string.IsNullOrWhiteSpace(serviceName);
-                }
-
-                public static List<ContractOperation> FindOperations(Type contractType, bool demandAttribute = false)
-                {
-                    var ops = new List<ContractOperation>();
-                    foreach (var method in contractType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-                    {
-                        if (method.IsGenericMethodDefinition) continue; // can't work with <T> methods
-
-                        var oca = (OperationContractAttribute?)Attribute.GetCustomAttribute(method, typeof(OperationContractAttribute), inherit: true);
-                        if (demandAttribute && oca == null) continue;
-                        string? opName = oca?.Name;
-                        if (string.IsNullOrWhiteSpace(opName))
-                        {
-                            opName = method.Name;
-                            if (opName.EndsWith("Async"))
-                                opName = opName.Substring(0, opName.Length - 5);
-                        }
-                        if (string.IsNullOrWhiteSpace(opName)) continue;
-
-                        var parameters = method.GetParameters();
-
-                        if (parameters.Length == 0 || parameters.Length > 2) continue; // no way of inferring anything!
-
-                        ContextKind? contextKind = null;
-                        if (parameters.Length == 1)
-                        {
-                            contextKind = ContextKind.None;
-                        }
-                        else if (parameters[1].ParameterType == typeof(CallOptions))
-                        {
-                            contextKind = ContextKind.CallOptions;
-                        }
-                        else if (parameters[1].ParameterType == typeof(CallContext))
-                        {
-                            contextKind = ContextKind.CallContext;
-                        }
-                        if (contextKind == null) continue; // unknown context type
-
-                        // for testing, I've only implemented unary naked
-                        Type[] types = Array.ConvertAll(parameters, x => x.ParameterType);
-                        Type from = types[0], to = method.ReturnType;
-                        if (to.IsGenericType)
-                        {
-                            var genType = to.GetGenericTypeDefinition();
-                            if (genType == typeof(AsyncUnaryCall<>) || genType == typeof(Task<>) || genType == typeof(ValueTask<>))
-                            {
-                                to = to.GetGenericArguments()[0];
-                            }
-                        }
-                        MethodType methodType = MethodType.Unary;
-
-                        ops.Add(new ContractOperation(opName, from, to, method, methodType, contextKind.Value, types));
-                    }
-                    return ops;
-                }
-
-                internal bool IsSyncT()
-                {
-                    return Method.ReturnType == To;
-                }
-                internal bool IsTaskT()
-                {
-                    var ret = Method.ReturnType;
-                    return ret.IsGenericType && ret.GetGenericTypeDefinition() == typeof(Task<>)
-                        && ret.GetGenericArguments()[0] == To;
-                }
-                internal bool IsValueTaskT()
-                {
-                    var ret = Method.ReturnType;
-                    return ret.IsGenericType && ret.GetGenericTypeDefinition() == typeof(ValueTask<>)
-                        && ret.GetGenericArguments()[0] == To;
+                    il.Emit(OpCodes.Ldarga, index);
                 }
             }
 
-            internal enum ContextKind
-            {
-                None, // no context
-                CallOptions, // GRPC core client context kind
-                CallContext, // pb-net shared context kind
-            }
+
 
             internal static Func<HttpClient, ILoggerFactory?, TService> CreateFactory<TService>()
                where TService : class
@@ -266,6 +154,14 @@ namespace ProtoBuf.Grpc.Client
 
                     // private IFooProxy(ClientBaseConfiguration configuration) : base(configuration) { }
                     WritePassThruCtor<ClientBaseConfiguration>(MethodAttributes.Family);
+                    {
+                        var toString = type.DefineMethod(nameof(ToString), s_Object_ToString.Attributes, s_Object_ToString.CallingConvention,
+                        typeof(string), Type.EmptyTypes);
+                        var il = toString.GetILGenerator();
+                        il.Emit(OpCodes.Ldstr, serviceName);
+                        il.Emit(OpCodes.Ret);
+                        type.DefineMethodOverride(toString, s_Object_ToString);
+                    }
 
                     var cctor = type.DefineTypeInitializer().GetILGenerator();
 
@@ -294,65 +190,55 @@ namespace ProtoBuf.Grpc.Client
 
                         // implement the method
                         var il = impl.GetILGenerator();
-                        il.Emit(OpCodes.Ldarg_0); // this.
-                        il.EmitCall(OpCodes.Callvirt, s_callInvoker, null); // get_CallInvoker
-                        il.Emit(OpCodes.Ldsfld, field); // method
-                        il.Emit(OpCodes.Ldnull); // host: always null
-                        switch (op.Context)
+
+                        switch(op.Context)
                         {
-                            case ContextKind.None:
-                                LoadDefault<CallOptions>(il);
-                                break;
                             case ContextKind.CallOptions:
-                                il.Emit(OpCodes.Ldarg_2); // options
+                                // we only support this for signatures that match the exat google pattern, but:
+                                // defer for now
+                                il.ThrowException(typeof(NotImplementedException));
                                 break;
+                            case ContextKind.NoContext:
                             case ContextKind.CallContext:
-                                il.Emit(OpCodes.Ldarga_S, (byte)2);
-                                il.EmitCall(OpCodes.Call, s_callContext_Client, null);
+                                // typically looks something like (where this is an extension method on Reshape):
+                                // => context.{ReshapeMethod}(CallInvoker, {method}, request, [host: null]);
+                                var method = op.TryGetClientHelper();
+                                if (method == null)
+                                {
+                                    // unexpected, but...
+                                    il.ThrowException(typeof(NotSupportedException));
+                                }
+                                else
+                                {
+                                    if (op.Context == ContextKind.CallContext)
+                                    {
+                                        Ldarga(il, 2);
+                                    }
+                                    else
+                                    {
+                                        il.Emit(OpCodes.Ldsflda, s_CallContext_Default);
+                                    }
+                                    il.Emit(OpCodes.Ldarg_0); // this.
+                                    il.EmitCall(OpCodes.Callvirt, s_ClientBase_CallInvoker, null); // get_CallInvoker
+
+                                    il.Emit(OpCodes.Ldsfld, field); // {method}
+                                    il.Emit(OpCodes.Ldarg_1); // request
+                                    il.Emit(OpCodes.Ldnull); // host (always null)
+                                    il.EmitCall(OpCodes.Call, method, null);
+                                    il.Emit(OpCodes.Ret); // return
+                                }
                                 break;
-                            default:
-                                throw new NotSupportedException("Unsupported call-context kind: " + op.Context);
+                        case ContextKind.ServerCallContext: // server call? we're writing a client!
+                            default: // who knows!
+                                il.ThrowException(typeof(NotSupportedException));
+                                break;
                         }
-
-                        il.Emit(OpCodes.Ldarg_1); // request
-
-                        // this.CallInvoker.AsyncUnaryCall<From,To>(method, host, options, request)
-                        il.EmitCall(OpCodes.Callvirt, typeof(CallInvoker).GetMethod(nameof(CallInvoker.AsyncUnaryCall))!.MakeGenericMethod(fromTo), null);
-
-                        if (op.IsSyncT())
-                        {
-                            EmitStandardReshape(s_reshapeSyncT);
-                        }
-                        else if (op.IsTaskT())
-                        {
-                            EmitStandardReshape(s_reshapeTaskT);
-                        }
-                        else if (op.IsValueTaskT())
-                        {
-                            EmitStandardReshape(s_reshapeValueTaskT);
-                        }
-                        void EmitStandardReshape(MethodInfo reshaper)
-                        {
-                            switch(op.Context)
-                            {
-                                case ContextKind.CallContext:
-                                    il.Emit(OpCodes.Ldarga_S, (byte)2);
-                                    il.EmitCall(OpCodes.Call, s_callContext_Prepare, null);
-                                    break;
-                                default:
-                                    il.Emit(OpCodes.Ldnull); // no metadata capture
-                                    break;
-                            }
-                            il.EmitCall(OpCodes.Call, reshaper.MakeGenericMethod(op.To), null);
-                        }
-
-                        il.Emit(OpCodes.Ret); // return
 
                         // mark it as the interface implementation
                         type.DefineMethodOverride(impl, op.Method);
                     }
 
-                    cctor.Emit(OpCodes.Ret); // end the type initializer
+                    cctor.Emit(OpCodes.Ret); // end the type initializer (after creating all the field types)
 
                     // return the factory method
                     return (Func<HttpClient, ILoggerFactory?, TService>)Delegate.CreateDelegate(typeof(Func<HttpClient, ILoggerFactory?, TService>), null,

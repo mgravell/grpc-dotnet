@@ -19,20 +19,14 @@ namespace ProtoBuf.Grpc.Internal
             get => _trailers ?? Throw("Trailers are not yet available");
             set => _trailers = value;
         }
-        internal object? StatusProvider { get; set; }
-
-        internal Status GetStatus()
-        {
-            if (StatusProvider == null) return default;
-            return ((dynamic)StatusProvider).GetStatus(); // hacky, but...
-        }
+        internal Status Status { get; set; }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static Metadata Throw(string message) => throw new InvalidOperationException(message);
 
         internal MetadataContext Reset()
         {
-            StatusProvider = null;
+            Status = default;
             _headers = _trailers = null;
             return this;
         }

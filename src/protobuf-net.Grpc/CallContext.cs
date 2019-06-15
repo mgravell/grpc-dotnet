@@ -14,6 +14,8 @@ namespace ProtoBuf.Grpc
     /// </summary>
     public readonly struct CallContext
     {
+        public static readonly CallContext Default; // it is **not** accidental that this is a field - allows effective ldsflda usage
+
         public CallOptions Client { get; }
         public ServerCallContext? Server { get; }
 
@@ -44,7 +46,7 @@ namespace ProtoBuf.Grpc
 
         public Metadata ResponseTrailers() => _metadataContext?.Trailers ?? ThrowNoContext<Metadata>();
 
-        public Status ResponseStatus() => _metadataContext?.GetStatus() ?? ThrowNoContext<Status>();
+        public Status ResponseStatus() => _metadataContext?.Status ?? ThrowNoContext<Status>();
 
         [MethodImpl]
         private T ThrowNoContext<T>()

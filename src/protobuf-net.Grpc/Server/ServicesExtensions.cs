@@ -45,45 +45,6 @@ namespace ProtoBuf.Grpc.Server
                 }
             }
 
-            // do **not** replace these with a `params` etc version; the point here is to be as cheap
-            // as possible for misses
-            private static bool IsMatch(Type returnType, ParameterInfo[] parameters, Type?[] types, Type? tRet)
-                => parameters.Length == 0
-                && IsMatch(tRet, returnType, out types[0]);
-            private static bool IsMatch(Type returnType, ParameterInfo[] parameters, Type?[] types, Type? t0, Type? tRet)
-                => parameters.Length == 1
-                && IsMatch(t0, parameters[0].ParameterType, out types[0])
-                && IsMatch(tRet, returnType, out types[1]);
-            private static bool IsMatch(Type returnType, ParameterInfo[] parameters, Type?[] types, Type? t0, Type? t1, Type? tRet)
-                => parameters.Length == 2
-                && IsMatch(t0, parameters[0].ParameterType, out types[0])
-                && IsMatch(t1, parameters[1].ParameterType, out types[1])
-                && IsMatch(tRet, returnType, out types[2]);
-            private static bool IsMatch(Type returnType, ParameterInfo[] parameters, Type?[] types, Type? t0, Type? t1, Type? t2, Type? tRet)
-                => parameters.Length == 3
-                && IsMatch(t0, parameters[0].ParameterType, out types[0])
-                && IsMatch(t1, parameters[1].ParameterType, out types[1])
-                && IsMatch(t2, parameters[2].ParameterType, out types[2])
-                && IsMatch(tRet, returnType, out types[3]);
-
-            private static bool IsMatch(in Type? template, in Type actual, out Type result)
-            {
-                if (template == null || template == actual)
-                {
-                    result = actual;
-                    return true;
-                } // fine
-                if (actual.IsGenericType && template.IsGenericTypeDefinition
-                    && actual.GetGenericTypeDefinition() == template)
-                {
-                    // expected Foo<>, got Foo<T>: report T
-                    result = actual.GetGenericArguments()[0];
-                    return true;
-                }
-                result = typeof(void);
-                return false;
-            }
-
             private void AddMethodsForService(ServiceMethodProviderContext<TService> context, Type serviceContract)
             {
                 bool isPublicContract = typeof(TService) == serviceContract;
@@ -136,41 +97,43 @@ namespace ProtoBuf.Grpc.Server
                         var outType = method.ReturnType;
                         var args = method.GetParameters();
 
+                        // TODO: use the code now in ContractOperation that handles more signatures
+
                         // IsMatch takes a signature which may contain wildcards for parameters
                         // and the return type; it validates the signature, and fills in the actual
                         // types (resolving generic types down to their T etc) into the buffer "types"
-                        if (IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(ServerCallContext), null)) // Foo(reader, ctx) => *
+                        if (ContractOperation.IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(ServerCallContext), null)) // Foo(reader, ctx) => *
                         {
                             bound = AddMethod(types[0], types[1], method, MethodType.ClientStreaming);
                         }
-                        else if (IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), null)) // Foo(reader) => *
+                        else if (ContractOperation.IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), null)) // Foo(reader) => *
                         {
                             bound = AddMethod(types[0], types[1], method, MethodType.ClientStreaming,
                                 args => Expression.Call(args[0], method, args[1]));
                         }
-                        else if (IsMatch(outType, args, types, null, typeof(ServerCallContext), null)) // Foo(*, ctx) => *
+                        else if (ContractOperation.IsMatch(outType, args, types, null, typeof(ServerCallContext), null)) // Foo(*, ctx) => *
                         {
                             bound = AddMethod(types[0], types[1], method, MethodType.Unary);
                         }
-                        else if (IsMatch(outType, args, types, null, null)) // Foo(*) => *
+                        else if (ContractOperation.IsMatch(outType, args, types, null, null)) // Foo(*) => *
                         {
                             bound = AddMethod(types[0], types[1], method, MethodType.Unary,
                                 args => Expression.Call(args[0], method, args[1]));
                         }
-                        else if (IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(IServerStreamWriter<>), typeof(ServerCallContext), null)) // Foo(reader, writer, ctx) => *
+                        else if (ContractOperation.IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(IServerStreamWriter<>), typeof(ServerCallContext), null)) // Foo(reader, writer, ctx) => *
                         {
                             bound = AddMethod(types[0], types[1], method, MethodType.DuplexStreaming);
                         }
-                        else if (IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(IServerStreamWriter<>), null)) // Foo(reader, writer) => *
+                        else if (ContractOperation.IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(IServerStreamWriter<>), null)) // Foo(reader, writer) => *
                         {
                             bound = AddMethod(types[0], types[1], method, MethodType.DuplexStreaming,
                                 args => Expression.Call(args[0], method, args[1], args[2]));
                         }
-                        else if (IsMatch(outType, args, types, null, typeof(IServerStreamWriter<>), typeof(ServerCallContext), null)) // Foo(*, writer, ctx) => *
+                        else if (ContractOperation.IsMatch(outType, args, types, null, typeof(IServerStreamWriter<>), typeof(ServerCallContext), null)) // Foo(*, writer, ctx) => *
                         {
                             bound = AddMethod(types[0], types[1], method, MethodType.ServerStreaming);
                         }
-                        else if (IsMatch(outType, args, types, null, typeof(IServerStreamWriter<>), null)) // Foo(*, writer) => *
+                        else if (ContractOperation.IsMatch(outType, args, types, null, typeof(IServerStreamWriter<>), null)) // Foo(*, writer) => *
                         {
                             bound = AddMethod(types[0], types[1], method, MethodType.ServerStreaming,
                                 args => Expression.Call(args[0], method, args[1], args[2]));

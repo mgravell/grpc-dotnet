@@ -16,4 +16,15 @@
     <ProjectReference Include="..\..\Shared\SharedContract\SharedContract.csproj" />
     <ProjectReference Include="..\..\..\src\Grpc.Net.Client\Grpc.Net.Client.csproj" />
   </ItemGroup>
+  <!--
+    System.Interactive.Async contains IAsyncEnumerable<T> that conflicts with .NET Core version
+    Give assembly an alias so .NET Core version can be referenced in C#
+  -->
+  <Target Name="ChangeAliasesOfReactiveExtensions" BeforeTargets="FindReferenceAssembliesForReferences;ResolveReferences">
+    <ItemGroup>
+      <ReferencePath Condition="'%(FileName)' == 'System.Interactive.Async'">
+        <Aliases>ix</Aliases>
+      </ReferencePath>
+    </ItemGroup>
+  </Target>
 </Project>

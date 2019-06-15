@@ -32,19 +32,34 @@ namespace Sample.Clients
         static async Task Main(string[] args)
         {
             var httpClient = ClientResources.CreateHttpClient("localhost:50051");
-            //var client = GrpcClient.Create<Greet.Greeter.GreeterClient>(httpClient);
-            // var client = ClientFactory.CreateService<SharedContract.ManualGreeterClient, SharedContract.IGreeter>(httpClient);
-            var client = ClientFactory.Create<SharedContract.IGreeter>(httpClient);
+            // var client = GrpcClient.Create<Greet.Greeter.GreeterClient>(httpClient); // standard GRPC, .proto-style
+            // var client = ClientFactory.CreateService<SharedContract.ManualGreeterClient, SharedContract.IGreeter>(httpClient); // manually written test rig
+            var client = ClientFactory.Create<SharedContract.IGreeter>(httpClient); // dynamically created proxy/client
             Console.WriteLine($"client: {client.GetType().FullName}");
             Console.WriteLine("Connecting...");
 
             await UnaryCallExample(client);
-
-            // await ServerStreamingCallExample(client);
+            await ServerStreamingCallExample(client);
 
             Console.WriteLine("Shutting down");
             Console.WriteLine("Press any key to exit...");
             Console.ReadKey();
+        }
+
+        private static async Task UnaryCallExample(SharedContract.IGreeter client)
+        {
+            // unary: returns ValueTask<T>
+            var reply = await client.SayHelloAsync(new SharedContract.HelloRequest { Name = "GreeterClient" });
+            Console.WriteLine("Greeting: " + reply.Message);
+        }
+
+        private static async Task ServerStreamingCallExample(SharedContract.IGreeter client)
+        {
+            // server-streaming: returns IAsyncEnumerable<T>
+            await foreach (var reply in client.SayHellos(new SharedContract.HelloRequest { Name = "GreeterClient" }))
+            {
+                Console.WriteLine("Greeting: " + reply.Message);
+            }
         }
 
         private static async Task UnaryCallExample(Greet.Greeter.GreeterClient client)
@@ -52,26 +67,6 @@ namespace Sample.Clients
             var reply = await client.SayHelloAsync(new Greet.HelloRequest { Name = "GreeterClient" });
             Console.WriteLine("Greeting: " + reply.Message);
         }
-        private static async Task UnaryCallExample(SharedContract.IGreeter client)
-        {
-            var callContext = new CallContext(default, CallContextFlags.CaptureMetadata);
-            var reply = await client.SayHelloAsync(new SharedContract.HelloRequest { Name = "GreeterClient" }, callContext);
-            Console.WriteLine("Greeting: " + reply.Message);
-            var status = callContext.ResponseStatus();
-            Console.WriteLine($"Status: {status.StatusCode} ({status.Detail})");
-            var metadata = callContext.ResponseHeaders();
-            Console.WriteLine(metadata.Count);
-            foreach(var header in metadata)
-            {
-                Console.WriteLine($"H: {header.Key}={header.Value}");
-            }
-            metadata = callContext.ResponseTrailers();
-            foreach (var header in metadata)
-            {
-                Console.WriteLine($"T: {header.Key}={header.Value}");
-            }
-        }
-
         private static async Task ServerStreamingCallExample(Greet.Greeter.GreeterClient client)
         {
             var cts = new CancellationTokenSource();
@@ -92,14 +87,5 @@ namespace Sample.Clients
                 }
             }
         }
-
-        //private static async Task ServerStreamingCallExample(SharedContract.IGreeter client)
-        //{
-        //    var replies = client.SayHellos(new SharedContract.HelloRequest { Name = "GreeterClient" });
-        //    while (await replies.ResponseStream.MoveNext(CancellationToken.None))
-        //    {
-        //        Console.WriteLine("Greeting: " + replies.ResponseStream.Current.Message);
-        //    }
-        //}
     }
 }

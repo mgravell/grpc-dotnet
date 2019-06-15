@@ -1,6 +1,7 @@
 ﻿using Grpc.Core;
 using ProtoBuf.Grpc;
 using ProtoBuf.Grpc.Internal;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 namespace SharedContract
 {
@@ -15,25 +16,17 @@ namespace SharedContract
 
         private const string SERVICE_NAME = "Greet.Greeter";
         public override string ToString() => SERVICE_NAME;
-#pragma warning disable CS0618
-        // ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request)
-        //  => Reshape.AsValueTask<HelloReply>(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, default, request));
 
         ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallContext context)
-            => CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, context.Client, request).AsValueTask(context.Prepare());
+            => context.UnaryValueTaskAsync(CallInvoker, s_SayHelloAsync, request);
 
-        //
-        //        ValueTask<HelloReply> IGreeter.SayHelloAsync(HelloRequest request, CallOptions options)
-        //            => Reshape.AsValueTask(CallInvoker.AsyncUnaryCall(s_SayHelloAsync, null, options, request));
-#pragma warning restore CS0618
-
-        //AsyncServerStreamingCall<HelloReply> IGreeter.SayHellos(HelloRequest request, CallOptions options)
-        //   => CallInvoker.AsyncServerStreamingCall(s_SayHellosAsync, null, options, request);
+        IAsyncEnumerable<HelloReply> IGreeter.SayHellos(HelloRequest request, CallContext context)
+           => context.ServerStreamingAsync(CallInvoker, s_SayHellosAsync, request);
 
         static readonly Method<HelloRequest, HelloReply> s_SayHelloAsync =
             new FullyNamedMethod<HelloRequest, HelloReply>("SayHello", MethodType.Unary, SERVICE_NAME);
 
-        //static readonly Method<HelloRequest, HelloReply> s_SayHellosAsync = new FullyNamedMethod<HelloRequest, HelloReply>(
-        //   "SayHellos", MethodType.ServerStreaming, SERVICE_NAME, nameof(IGreeter.SayHellos));
+        static readonly Method<HelloRequest, HelloReply> s_SayHellosAsync = new FullyNamedMethod<HelloRequest, HelloReply>(
+           "SayHellos", MethodType.ServerStreaming, SERVICE_NAME, nameof(IGreeter.SayHellos));
     }
 }
