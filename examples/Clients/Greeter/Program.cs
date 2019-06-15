@@ -57,6 +57,8 @@ namespace Sample.Clients
             var callContext = new CallContext(default, CallContextFlags.CaptureMetadata);
             var reply = await client.SayHelloAsync(new SharedContract.HelloRequest { Name = "GreeterClient" }, callContext);
             Console.WriteLine("Greeting: " + reply.Message);
+            var status = callContext.ResponseStatus();
+            Console.WriteLine($"Status: {status.StatusCode} ({status.Detail})");
             var metadata = callContext.ResponseHeaders();
             Console.WriteLine(metadata.Count);
             foreach(var header in metadata)

@@ -40,12 +40,14 @@ namespace ProtoBuf.Grpc
 
         private readonly MetadataContext? _metadataContext;
 
-        public Metadata ResponseHeaders() => _metadataContext?.Headers ?? ThrowNoContext();
+        public Metadata ResponseHeaders() => _metadataContext?.Headers ?? ThrowNoContext<Metadata>();
 
-        public Metadata ResponseTrailers() => _metadataContext?.Trailers ?? ThrowNoContext();
+        public Metadata ResponseTrailers() => _metadataContext?.Trailers ?? ThrowNoContext<Metadata>();
+
+        public Status ResponseStatus() => _metadataContext?.GetStatus() ?? ThrowNoContext<Status>();
 
         [MethodImpl]
-        private Metadata ThrowNoContext()
+        private T ThrowNoContext<T>()
         {
             if (Server != null) throw new InvalidOperationException("Response metadata is not available for server contexts");
             throw new InvalidOperationException("The CaptureMetadata flag must be specified when creating the CallContext to enable response metadata");
