@@ -19,20 +19,21 @@ namespace ProtoBuf.Grpc
         public CallOptions Client { get; }
         public ServerCallContext? Server { get; }
 
-        public Metadata RequestHeaders => Server == null ? Client.Headers : Server.RequestHeaders;
-        public CancellationToken CancellationToken => Server == null ? Client.CancellationToken : Server.CancellationToken;
-        public DateTime? Deadline => Server?.Deadline ?? Client.Deadline;
-        public WriteOptions WriteOptions => Server?.WriteOptions ?? Client.WriteOptions;
+        public Metadata RequestHeaders => Client.Headers;
+        public CancellationToken CancellationToken => Client.CancellationToken;
+        public DateTime? Deadline => Client.Deadline;
+        public WriteOptions WriteOptions => Client.WriteOptions;
 
         [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
         internal MetadataContext? Prepare() => _metadataContext?.Reset();
 
         public CallContext(ServerCallContext server)
         {
-            Client = default;
             Server = server;
+            Client = server == null ? default : new CallOptions(server.RequestHeaders, server.Deadline, server.CancellationToken, server.WriteOptions);
             _metadataContext = null;
         }
+
         public CallContext(in CallOptions client, CallContextFlags flags = CallContextFlags.None)
         {
             Client = client;
