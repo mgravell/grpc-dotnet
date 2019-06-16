@@ -121,18 +121,22 @@ namespace ProtoBuf.Grpc.Server
                 object?[]? argsBuffer = null;
                 Type[] typesBuffer = Array.Empty<Type>();
 
+                int count = 0;
                 foreach (var op in ContractOperation.FindOperations(serviceContract, isPublicContract))
                 {
                     if (_invokers.TryGetValue((op.MethodType, op.Context, op.Result), out var invoker)
                         && AddMethod(op.From, op.To, op.Method, op.MethodType, invoker))
                     {
                         // yay!
+                        count++;
                     }
                     else
                     {
                         _logger.Log(LogLevel.Warning, "operation cannot be hosted as a server: {0}", op);
                     }
                 }
+                if (count != 0) _logger.Log(LogLevel.Information, "{0} implementing service {1} (via '{2}') with {3} operation(s)", typeof(TService), serviceName, serviceContract.Name, count);
+
                 bool AddMethod(Type @in, Type @out, MethodInfo m, MethodType t, Func<MethodInfo, ParameterExpression[], Expression>? invoker = null)
                 {
                     try
