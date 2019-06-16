@@ -1,20 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.0</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
-    <Protobuf Include="..\..\Proto\greet.proto" GrpcServices="Client" />
+    <PackageReference Include="Grpc.Core.Api" Version="$(GrpcPackageVersion)" />
+    <PackageReference Include="Grpc.Core" Version="$(GrpcPackageVersion)" />
+    <PackageReference Include="protobuf-net" Version="3.0.0-alpha.43" />
+  </ItemGroup>
 
-    <Compile Include="..\..\Shared\ClientResources.cs" Link="ClientResources.cs" />
-
-    <PackageReference Include="Google.Protobuf" Version="$(GoogleProtobufPackageVersion)" />
-    <PackageReference Include="Grpc.Tools" Version="$(GrpcPackageVersion)" PrivateAssets="All" />
-    <ProjectReference Include="..\..\..\src\protobuf-net.Grpc\protobuf-net.Grpc.csproj" />
-    <ProjectReference Include="..\..\Shared\SharedContract\SharedContract.csproj" />
+  <ItemGroup>
     <ProjectReference Include="..\..\..\src\Grpc.Net.Client\Grpc.Net.Client.csproj" />
+    <ProjectReference Include="..\..\..\src\protobuf-net.Grpc\protobuf-net.Grpc.csproj" />
   </ItemGroup>
   <!--
     System.Interactive.Async contains IAsyncEnumerable<T> that conflicts with .NET Core version

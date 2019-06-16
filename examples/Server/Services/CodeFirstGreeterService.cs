@@ -1,0 +1,65 @@
+﻿using Grpc.Core;
+using Microsoft.Extensions.Logging;
+using ProtoBuf;
+using System.ServiceModel;
+using System.Threading.Tasks;
+
+namespace Server.CodeFirstGreeterService
+{
+    [ServiceContract(Name = "Greet.Greeter")]
+    interface IGreeterService
+    {
+        // note: this is *NOT* a google-compatible signature; no context arg, not a Task, etc
+        HelloReply SayHello(HelloRequest request);
+    }
+
+    [ProtoContract]
+    public class HelloRequest
+    {
+        [ProtoMember(1)]
+        public string? Name { get; set; }
+    }
+    [ProtoContract]
+    public class HelloReply
+    {
+        [ProtoMember(1)]
+        public string? Message { get; set; }
+    }
+
+    [ServiceContract(Name = "Greet.Greeter")]
+    class MyService : IGreeterService
+    {
+
+        private readonly ILogger<MyService> _logger;
+
+        public MyService(ILoggerFactory loggerFactory)
+        {
+            _logger = loggerFactory.CreateLogger<MyService>();
+        }
+
+        HelloReply IGreeterService.SayHello(HelloRequest request)
+        {
+            _logger.LogInformation($"Sending hello to {request.Name}");
+            return new HelloReply { Message = "Hello (sync/explicit interface impl) " + request.Name };
+        }
+
+        [OperationContract]
+        public async Task SayHellosAsync(HelloRequest request, IServerStreamWriter<HelloReply> responseStream, ServerCallContext context)
+        {
+            var httpContext = context.GetHttpContext();
+            _logger.LogInformation($"Connection id: {httpContext.Connection.Id}");
+
+            var i = 0;
+            while (!context.CancellationToken.IsCancellationRequested)
+            {
+                var message = $"How are you {request.Name}? {++i}";
+                _logger.LogInformation($"Sending greeting {message}.");
+
+                await responseStream.WriteAsync(new HelloReply { Message = message });
+
+                // Gotta look busy
+                await Task.Delay(1000);
+            }
+        }
+    }
+}

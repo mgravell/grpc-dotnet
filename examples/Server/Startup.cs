@@ -16,15 +16,18 @@
 
 #endregion
 
-using System;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
+using Count;
+using Greet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using ProtoBuf.Grpc.Server;
 using Server.Interceptors;
+using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
 namespace GRPCServer
 {
@@ -41,19 +44,28 @@ namespace GRPCServer
                     options.Interceptors.Add<MaxConcurrentCallsInterceptor>();
                     // This registers a global interceptor with a Scoped lifetime.
                     options.Interceptors.Add<MaxStreamingRequestTimeoutInterceptor>(TimeSpan.FromSeconds(30));
-                })
+                })                
                 .AddServiceOptions<GreeterService>(options =>
                 {
                     // This registers an interceptor for the Greeter service with a Singleton lifetime.
                     // NOTE: Not all calls should be cached. Since the response of this service only depends on the request and no other state, adding caching here is acceptable.
                     options.Interceptors.Add<UnaryCachingInterceptor>();
                 });
+            services.AddCodeFirstGrpc();
             services.AddGrpcReflection();
             services.AddSingleton(new MaxConcurrentCallsInterceptor(200));
             services.AddSingleton<UnaryCachingInterceptor>();
             services.AddSingleton<IncrementingCounter>();
             services.AddSingleton<MailQueueRepository>();
             services.AddSingleton<TicketRepository>();
+
+            // These clients will call back to the server
+            services
+                .AddGrpcClient<Greeter.GreeterClient>((s, o) => { o.BaseAddress = GetCurrentAddress(s); })
+                .EnableCallContextPropagation();
+            services
+                .AddGrpcClient<Counter.CounterClient>((s, o) => { o.BaseAddress = GetCurrentAddress(s); })
+                .EnableCallContextPropagation();
 
             services.AddAuthorization(options =>
             {
@@ -76,6 +88,18 @@ namespace GRPCServer
                             IssuerSigningKey = SecurityKey
                         };
                 });
+
+            static Uri GetCurrentAddress(IServiceProvider serviceProvider)
+            {
+                // Get the address of the current server from the request
+                var context = serviceProvider.GetRequiredService<IHttpContextAccessor>()?.HttpContext;
+                if (context == null)
+                {
+                    throw new InvalidOperationException("Could not get HttpContext.");
+                }
+
+                return new Uri($"{context.Request.Scheme}://{context.Request.Host.Value}");
+            }
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -90,10 +114,11 @@ namespace GRPCServer
             {
                 endpoints.MapGrpcService<MailerService>();
                 endpoints.MapGrpcService<CounterService>();
-                endpoints.MapGrpcService<GreeterService>();
+                // endpoints.MapGrpcService<GreeterService>();
+                endpoints.MapGrpcService<Server.CodeFirstGreeterService.MyService>();
                 endpoints.MapGrpcService<TicketerService>();
                 endpoints.MapGrpcService<CertifierService>();
-
+                endpoints.MapGrpcService<AggregatorService>();
                 endpoints.MapGrpcReflectionService();
 
                 endpoints.MapGet("/generateJwtToken", context =>

@@ -20,9 +20,10 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Common;
-using Greet;
 using Grpc.Core;
 using Grpc.Net.Client;
+using ProtoBuf.Grpc;
+using ProtoBuf.Grpc.Client;
 
 namespace Sample.Clients
 {
@@ -31,10 +32,13 @@ namespace Sample.Clients
         static async Task Main(string[] args)
         {
             var httpClient = ClientResources.CreateHttpClient("localhost:50051");
-            var client = GrpcClient.Create<Greeter.GreeterClient>(httpClient);
+            // var client = GrpcClient.Create<Greet.Greeter.GreeterClient>(httpClient); // standard Google client via "protoc"
+            // var client = ClientFactory.CreateService<SharedContract.ManualGreeterClient, SharedContract.IGreeter>(httpClient); // manually written test rig
+            var client = ClientFactory.Create<SharedContract.IGreeter>(httpClient); // dynamically created proxy/client
+            Console.WriteLine($"client: {client.GetType().FullName}");
+            Console.WriteLine("Connecting...");
 
             await UnaryCallExample(client);
-
             await ServerStreamingCallExample(client);
 
             Console.WriteLine("Shutting down");
@@ -42,18 +46,31 @@ namespace Sample.Clients
             Console.ReadKey();
         }
 
-        private static async Task UnaryCallExample(Greeter.GreeterClient client)
+        private static async Task UnaryCallExample(SharedContract.IGreeter client)
         {
-            var reply = await client.SayHelloAsync(new HelloRequest { Name = "GreeterClient" });
+            var reply = await client.SayHelloAsync(new SharedContract.HelloRequest { Name = "GreeterClient" });
             Console.WriteLine("Greeting: " + reply.Message);
         }
 
-        private static async Task ServerStreamingCallExample(Greeter.GreeterClient client)
+        private static async Task ServerStreamingCallExample(SharedContract.IGreeter client)
+        {
+            await foreach (var reply in client.SayHellos(new SharedContract.HelloRequest { Name = "GreeterClient" }))
+            {
+                Console.WriteLine("Greeting: " + reply.Message);
+            }
+        }
+
+        private static async Task UnaryCallExample(Greet.Greeter.GreeterClient client)
+        {
+            var reply = await client.SayHelloAsync(new Greet.HelloRequest { Name = "GreeterClient" });
+            Console.WriteLine("Greeting: " + reply.Message);
+        }
+        private static async Task ServerStreamingCallExample(Greet.Greeter.GreeterClient client)
         {
             var cts = new CancellationTokenSource();
             cts.CancelAfter(TimeSpan.FromSeconds(3.5));
 
-            using (var replies = client.SayHellos(new HelloRequest { Name = "GreeterClient" }, cancellationToken: cts.Token))
+            using (var replies = client.SayHellos(new Greet.HelloRequest { Name = "GreeterClient" }, cancellationToken: cts.Token))
             {
                 try
                 {
