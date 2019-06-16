@@ -7,10 +7,40 @@ using System.Threading;
 using System.Threading.Tasks;
 namespace ProtoBuf.Grpc.Internal
 {
-    [Obsolete("This class is intended for use by runtime-generated code; all methods can be changed without notice - it is only guaranteed to work with the internally generated code", false)]
+    [Obsolete(WarningMessage, false)]
     [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
     public static class Reshape
     {
+        internal const string WarningMessage = "This API is intended for use by runtime-generated code; all methods can be changed without notice - it is only guaranteed to work with the internally generated code";
+
+        [Obsolete(WarningMessage, false)]
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
+        public static async IAsyncEnumerable<T> AsAsyncEnumerable<T>(this IAsyncStreamReader<T> reader, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            using (reader)
+            {
+                while (await reader.MoveNext(cancellationToken))
+                {
+                    yield return reader.Current;
+                }
+            }
+        }
+
+        [Obsolete(WarningMessage, false)]
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
+        public static async Task WriteTo<T>(this IAsyncEnumerable<T> reader, IServerStreamWriter<T> writer, CancellationToken cancellationToken)
+        {
+            await using (var iter = reader.GetAsyncEnumerator(cancellationToken))
+            {
+                while (await iter.MoveNextAsync())
+                {
+                    await writer.WriteAsync(iter.Current);
+                }
+            }
+        }
+
+        [Obsolete(WarningMessage, false)]
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
         public static TResponse UnarySync<TRequest, TResponse>(
             this in CallContext context,
             CallInvoker invoker, Method<TRequest, TResponse> method, TRequest request, string? host = null)
@@ -21,6 +51,8 @@ namespace ProtoBuf.Grpc.Internal
             return invoker.BlockingUnaryCall(method, host, context.Client, request);
         }
 
+        [Obsolete(WarningMessage, false)]
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
         public static Task<TResponse> UnaryTaskAsync<TRequest, TResponse>(
             this in CallContext context,
             CallInvoker invoker, Method<TRequest, TResponse> method, TRequest request, string? host = null)
@@ -28,6 +60,8 @@ namespace ProtoBuf.Grpc.Internal
             where TResponse : class
             => UnaryTaskAsyncImpl<TRequest, TResponse>(invoker.AsyncUnaryCall<TRequest, TResponse>(method, host, context.Client, request), context.Prepare());
 
+        [Obsolete(WarningMessage, false)]
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
         public static ValueTask<TResponse> UnaryValueTaskAsync<TRequest, TResponse>(
             this in CallContext context, CallInvoker invoker,
             Method<TRequest, TResponse> method, TRequest request, string? host = null)
@@ -51,6 +85,8 @@ namespace ProtoBuf.Grpc.Internal
             }
         }
 
+        [Obsolete(WarningMessage, false)]
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
         public static IAsyncEnumerable<TResponse> ServerStreamingAsync<TRequest, TResponse>(
             this in CallContext context,
             CallInvoker invoker, Method<TRequest, TResponse> method, TRequest request, string? host = null)
@@ -81,6 +117,8 @@ namespace ProtoBuf.Grpc.Internal
             }
         }
 
+        [Obsolete(WarningMessage, false)]
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
         public static Task<TResponse> ClientStreamingTaskAsync<TRequest, TResponse>(
             this in CallContext options,
             CallInvoker invoker, Method<TRequest, TResponse> method, IAsyncEnumerable<TRequest> request, string? host = null)
@@ -88,6 +126,8 @@ namespace ProtoBuf.Grpc.Internal
             where TResponse : class
             => ClientStreamingTaskAsyncImpl(invoker.AsyncClientStreamingCall<TRequest, TResponse>(method, host, options.Client), options.Prepare(), options.CancellationToken, request);
 
+        [Obsolete(WarningMessage, false)]
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
         public static ValueTask<TResponse> ClientStreamingValueTaskAsync<TRequest, TResponse>(
             this in CallContext options,
             CallInvoker invoker, Method<TRequest, TResponse> method, IAsyncEnumerable<TRequest> request, string? host = null)
@@ -124,6 +164,8 @@ namespace ProtoBuf.Grpc.Internal
             }
         }
 
+        [Obsolete(WarningMessage, false)]
+        [Browsable(false), EditorBrowsable(EditorBrowsableState.Never)]
         public static IAsyncEnumerable<TResponse> DuplexAsync<TRequest, TResponse>(
             this in CallContext options,
             CallInvoker invoker, Method<TRequest, TResponse> method, IAsyncEnumerable<TRequest> request, string? host = null)

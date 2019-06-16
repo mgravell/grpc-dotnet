@@ -36,120 +36,130 @@ namespace ProtoBuf.Grpc.Server
                 if (Attribute.IsDefined(typeof(TService), typeof(BindServiceMethodAttribute))) return;
 
                 // we support methods that match suitable signatures, where:
-                // - the method is directly on TService and is marked [OperationContract]
-                // - the method is on an interface that TService implements, and the interface is marked [ServiceContract]
-                AddMethodsForService(context,typeof(TService));
-                foreach(var iType in typeof(TService).GetInterfaces())
+                // 1. (removed - no longer supported) the method is directly on TService and is marked [OperationContract]
+                // 2. the method is on an interface that TService implements, and the interface is marked [ServiceContract]
+                // AddMethodsForService(context,typeof(TService));
+
+                foreach (var iType in typeof(TService).GetInterfaces())
                 {
                     AddMethodsForService(context, iType);
                 }
             }
 
+            static Expression ToTaskT(Expression expression)
+            {
+                var type = expression.Type;
+                if (type.IsGenericType)
+                {
+                    if (type.GetGenericTypeDefinition() == typeof(Task<>))
+                        return expression;
+                    if (type.GetGenericTypeDefinition() == typeof(ValueTask<>))
+                        return Expression.Call(expression, nameof(ValueTask<int>.AsTask), null);
+                }
+                return Expression.Call(typeof(Task), nameof(Task.FromResult), new Type[] { expression.Type }, expression);
+            }
+
+            internal static readonly ConstructorInfo s_CallContext_FromServerContext = typeof(CallContext).GetConstructor(new[] { typeof(ServerCallContext) })!;
+            static Expression ToCallContext(Expression context) => Expression.New(s_CallContext_FromServerContext, context);
+#pragma warning disable CS0618
+            static Expression AsAsyncEnumerable(ParameterExpression value, ParameterExpression context)
+                => Expression.Call(typeof(Reshape), nameof(Reshape.AsAsyncEnumerable),
+                    typeArguments: value.Type.GetGenericArguments(),
+                    arguments: new Expression[] { value, Expression.Property(context, nameof(ServerCallContext.CancellationToken)) });
+
+            static Expression WriteTo(Expression value, ParameterExpression writer, ParameterExpression context)
+                => Expression.Call(typeof(Reshape), nameof(Reshape.WriteTo),
+                    typeArguments: value.Type.GetGenericArguments(),
+                    arguments: new Expression[] {value, writer, Expression.Property(context, nameof(ServerCallContext.CancellationToken)) });
+#pragma warning restore CS0618
+
+            static readonly Dictionary<(MethodType, ContextKind, ResultKind), Func<MethodInfo, ParameterExpression[], Expression>?> _invokers
+                = new Dictionary<(MethodType, ContextKind, ResultKind), Func<MethodInfo, ParameterExpression[], Expression>?>
+            {
+                // GRPC-style server methods are direct match; no mapping required
+                // => service.{method}(args)
+                { (MethodType.Unary, ContextKind.ServerCallContext, ResultKind.Task), null },
+                { (MethodType.ServerStreaming, ContextKind.ServerCallContext, ResultKind.Task), null },
+                { (MethodType.ClientStreaming, ContextKind.ServerCallContext, ResultKind.Task), null },
+                { (MethodType.DuplexStreaming, ContextKind.ServerCallContext, ResultKind.Task), null },
+
+                // Unary: Task<TResponse> Foo(TService service, TRequest request, ServerCallContext serverCallContext);
+                // => service.{method}(request, [new CallContext(serverCallContext)])
+                {(MethodType.Unary, ContextKind.NoContext, ResultKind.Task), (method, args) => ToTaskT(Expression.Call(args[0], method, args[1])) },
+                {(MethodType.Unary, ContextKind.NoContext, ResultKind.ValueTask), (method, args) => ToTaskT(Expression.Call(args[0], method, args[1])) },
+                {(MethodType.Unary, ContextKind.NoContext, ResultKind.Sync), (method, args) => ToTaskT(Expression.Call(args[0], method, args[1])) },
+
+                {(MethodType.Unary, ContextKind.CallContext, ResultKind.Task), (method, args) => ToTaskT(Expression.Call(args[0], method, args[1], ToCallContext(args[2]))) },
+                {(MethodType.Unary, ContextKind.CallContext, ResultKind.ValueTask), (method, args) => ToTaskT(Expression.Call(args[0], method, args[1], ToCallContext(args[2]))) },
+                {(MethodType.Unary, ContextKind.CallContext, ResultKind.Sync), (method, args) => ToTaskT(Expression.Call(args[0], method, args[1], ToCallContext(args[2]))) },
+
+                // Client Streaming: Task<TResponse> Foo(TService service, IAsyncStreamReader<TRequest> stream, ServerCallContext serverCallContext);
+                // => service.{method}(reader.AsAsyncEnumerable(serverCallContext.CancellationToken), [new CallContext(serverCallContext)])
+                {(MethodType.ClientStreaming, ContextKind.NoContext, ResultKind.Task), (method, args) => ToTaskT(Expression.Call(args[0], method, AsAsyncEnumerable(args[1], args[2]))) },
+                {(MethodType.ClientStreaming, ContextKind.NoContext, ResultKind.ValueTask), (method, args) => ToTaskT(Expression.Call(args[0], method, AsAsyncEnumerable(args[1], args[2]))) },
+                {(MethodType.ClientStreaming, ContextKind.NoContext, ResultKind.Sync), (method, args) => ToTaskT(Expression.Call(args[0], method, AsAsyncEnumerable(args[1], args[2]))) },
+
+                {(MethodType.ClientStreaming, ContextKind.CallContext, ResultKind.Task), (method, args) => ToTaskT(Expression.Call(args[0], method, AsAsyncEnumerable(args[1], args[2]), ToCallContext(args[2]))) },
+                {(MethodType.ClientStreaming, ContextKind.CallContext, ResultKind.ValueTask), (method, args) => ToTaskT(Expression.Call(args[0], method, AsAsyncEnumerable(args[1], args[2]), ToCallContext(args[2]))) },
+                {(MethodType.ClientStreaming, ContextKind.CallContext, ResultKind.Sync), (method, args) => ToTaskT(Expression.Call(args[0], method, AsAsyncEnumerable(args[1], args[2]), ToCallContext(args[2]))) },
+
+                // Server Streaming: Task Foo(TService service, TRequest request, IServerStreamWriter<TResponse> stream, ServerCallContext serverCallContext);
+                // => service.{method}(request, [new CallContext(serverCallContext)]).WriteTo(stream, serverCallContext.CancellationToken)
+                {(MethodType.ServerStreaming, ContextKind.NoContext, ResultKind.AsyncEnumerable), (method, args) => WriteTo(Expression.Call(args[0], method, args[1]), args[2], args[3])},
+                {(MethodType.ServerStreaming, ContextKind.CallContext, ResultKind.AsyncEnumerable), (method, args) => WriteTo(Expression.Call(args[0], method, args[1], ToCallContext(args[3])), args[2], args[3])},
+
+                // Duplex: Task Foo(TService service, IAsyncStreamReader<TRequest> input, IServerStreamWriter<TResponse> output, ServerCallContext serverCallContext);
+                // => service.{method}(input.AsAsyncEnumerable(serverCallContext.CancellationToken), [new CallContext(serverCallContext)]).WriteTo(output, serverCallContext.CancellationToken)
+                {(MethodType.DuplexStreaming, ContextKind.NoContext, ResultKind.AsyncEnumerable), (method, args) => WriteTo(Expression.Call(args[0], method, AsAsyncEnumerable(args[1], args[3])), args[2], args[3]) },
+                {(MethodType.DuplexStreaming, ContextKind.CallContext, ResultKind.AsyncEnumerable), (method, args) => WriteTo(Expression.Call(args[0], method, AsAsyncEnumerable(args[1], args[3]), ToCallContext(args[3])), args[2], args[3]) },
+            };
             private void AddMethodsForService(ServiceMethodProviderContext<TService> context, Type serviceContract)
             {
                 bool isPublicContract = typeof(TService) == serviceContract;
-                var sva = (ServiceContractAttribute?)Attribute.GetCustomAttribute(serviceContract, typeof(ServiceContractAttribute), inherit: true);
-                if (sva == null && !isPublicContract) return; // for interfaces: only process those marked [ServiceContract]; for the class itself: this is optional
-
-                _logger.Log(LogLevel.Warning, "pb-net processing {0}/{1}", typeof(TService).Name, serviceContract.Name);
-
-                var serviceName = sva?.Name;
-                if (string.IsNullOrWhiteSpace(serviceName)) serviceName = serviceContract.FullName?.Replace('+', '.');
-                if (string.IsNullOrWhiteSpace(serviceName)) return; // no shirt, no shoes, no service
-
-                #region Utility method to invoke AddMethod<,,>
+                if (!ContractOperation.TryGetServiceName(serviceContract, out var serviceName, !isPublicContract)) return;
+                _logger.Log(LogLevel.Trace, "pb-net processing {0}/{1} as {2}", typeof(TService).Name, serviceContract.Name, serviceName);
                 object?[]? argsBuffer = null;
                 Type[] typesBuffer = Array.Empty<Type>();
-                bool AddMethod(Type @in, Type @out, MethodInfo m, MethodType t, Func<ParameterExpression[], Expression>? invoker = null)
+
+                foreach (var op in ContractOperation.FindOperations(serviceContract, isPublicContract))
                 {
-                    if (typesBuffer.Length == 0)
+                    if (_invokers.TryGetValue((op.MethodType, op.Context, op.Result), out var invoker)
+                        && AddMethod(op.From, op.To, op.Method, op.MethodType, invoker))
                     {
-                        typesBuffer = new Type[] { typeof(TService), typeof(void), typeof(void) };
+                        // yay!
                     }
-                    typesBuffer[1] = @in;
-                    typesBuffer[2] = @out;
-
-                    if (argsBuffer == null)
+                    else
                     {
-                        argsBuffer = new object?[] { serviceName, null, null, context, _logger, null };
+                        _logger.Log(LogLevel.Warning, "operation cannot be hosted as a server: {0}", op);
                     }
-                    argsBuffer[1] = m;
-                    argsBuffer[2] = t;
-                    argsBuffer[5] = invoker;
-
-                    s_addMethod.MakeGenericMethod(typesBuffer).Invoke(null, argsBuffer);
-                    return true;
                 }
-
-                #endregion
-
-                foreach (var method in serviceContract.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                bool AddMethod(Type @in, Type @out, MethodInfo m, MethodType t, Func<MethodInfo, ParameterExpression[], Expression>? invoker = null)
                 {
-                    if (method.IsGenericMethodDefinition) continue; // no generics - what T would we use?
-
-                    Type[] types = ArrayPool<Type>.Shared.Rent(8);
                     try
                     {
-                        if (isPublicContract && !Attribute.IsDefined(method, typeof(OperationContractAttribute)))
-                            continue; // for methods on the class (not a service contract interface): demand [OperationContract]
+                        if (typesBuffer.Length == 0)
+                        {
+                            typesBuffer = new Type[] { typeof(TService), typeof(void), typeof(void) };
+                        }
+                        typesBuffer[1] = @in;
+                        typesBuffer[2] = @out;
 
-                        bool bound = false;
-                        var outType = method.ReturnType;
-                        var args = method.GetParameters();
+                        if (argsBuffer == null)
+                        {
+                            argsBuffer = new object?[] { serviceName, null, null, context, _logger, null };
+                        }
+                        argsBuffer[1] = m;
+                        argsBuffer[2] = t;
+                        argsBuffer[5] = invoker;
 
-                        // TODO: use the code now in ContractOperation that handles more signatures
-
-                        // IsMatch takes a signature which may contain wildcards for parameters
-                        // and the return type; it validates the signature, and fills in the actual
-                        // types (resolving generic types down to their T etc) into the buffer "types"
-                        if (ContractOperation.IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(ServerCallContext), null)) // Foo(reader, ctx) => *
-                        {
-                            bound = AddMethod(types[0], types[1], method, MethodType.ClientStreaming);
-                        }
-                        else if (ContractOperation.IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), null)) // Foo(reader) => *
-                        {
-                            bound = AddMethod(types[0], types[1], method, MethodType.ClientStreaming,
-                                args => Expression.Call(args[0], method, args[1]));
-                        }
-                        else if (ContractOperation.IsMatch(outType, args, types, null, typeof(ServerCallContext), null)) // Foo(*, ctx) => *
-                        {
-                            bound = AddMethod(types[0], types[1], method, MethodType.Unary);
-                        }
-                        else if (ContractOperation.IsMatch(outType, args, types, null, null)) // Foo(*) => *
-                        {
-                            bound = AddMethod(types[0], types[1], method, MethodType.Unary,
-                                args => Expression.Call(args[0], method, args[1]));
-                        }
-                        else if (ContractOperation.IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(IServerStreamWriter<>), typeof(ServerCallContext), null)) // Foo(reader, writer, ctx) => *
-                        {
-                            bound = AddMethod(types[0], types[1], method, MethodType.DuplexStreaming);
-                        }
-                        else if (ContractOperation.IsMatch(outType, args, types, typeof(IAsyncStreamReader<>), typeof(IServerStreamWriter<>), null)) // Foo(reader, writer) => *
-                        {
-                            bound = AddMethod(types[0], types[1], method, MethodType.DuplexStreaming,
-                                args => Expression.Call(args[0], method, args[1], args[2]));
-                        }
-                        else if (ContractOperation.IsMatch(outType, args, types, null, typeof(IServerStreamWriter<>), typeof(ServerCallContext), null)) // Foo(*, writer, ctx) => *
-                        {
-                            bound = AddMethod(types[0], types[1], method, MethodType.ServerStreaming);
-                        }
-                        else if (ContractOperation.IsMatch(outType, args, types, null, typeof(IServerStreamWriter<>), null)) // Foo(*, writer) => *
-                        {
-                            bound = AddMethod(types[0], types[1], method, MethodType.ServerStreaming,
-                                args => Expression.Call(args[0], method, args[1], args[2]));
-                        }
-                        if (bound)
-                        {
-                            _logger.Log(LogLevel.Warning, "Bound {0}.{1}", serviceContract.Name, method.Name);
-                        }
+                        s_addMethod.MakeGenericMethod(typesBuffer).Invoke(null, argsBuffer);
+                        return true;
                     }
-                    catch (Exception ex)
+                    catch (Exception fail)
                     {
-                        _logger.Log(LogLevel.Error, "Unable to bind {0}.{1}: {2}", serviceContract.Name, method.Name, ex.Message);
-                    }
-                    finally
-                    {
-                        ArrayPool<Type?>.Shared.Return(types);
+                        if (fail is TargetInvocationException tie) fail = tie.InnerException!;
+                        _logger.Log(LogLevel.Error, "Failure processing {0}: {1}", m.Name, fail.Message);
+                        return false;
                     }
                 }
             }
@@ -161,7 +171,7 @@ namespace ProtoBuf.Grpc.Server
         private static void AddMethod<TService, TRequest, TResponse>(
             string serviceName, MethodInfo method, MethodType methodType,
             ServiceMethodProviderContext<TService> context, ILogger logger,
-            Func<ParameterExpression[], Expression>? invoker = null)
+            Func<MethodInfo, ParameterExpression[], Expression>? invoker = null)
             where TService : class
             where TRequest : class
             where TResponse : class
@@ -174,8 +184,6 @@ namespace ProtoBuf.Grpc.Server
                 if (operationName.EndsWith("Async")) operationName = operationName.Substring(0, operationName.Length - 5);
             }
 
-            logger.Log(LogLevel.Warning, "Registering {0}.{1} as {2}: {3} - {4} => {5}", typeof(TService).Name, method.Name, operationName, methodType, typeof(TRequest).Name, typeof(TResponse).Name);
-
             var metadata = new List<object>();
             // Add type metadata first so it has a lower priority
             metadata.AddRange(typeof(TService).GetCustomAttributes(inherit: true));
@@ -184,34 +192,18 @@ namespace ProtoBuf.Grpc.Server
 
             TDelegate As<TDelegate>() where TDelegate : Delegate
             {
-                // basic - direct call
+                if (invoker == null)
+                {
+                    // basic - direct call
+                    return (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), null, method);
+                }
                 var finalSignature = typeof(TDelegate).GetMethod("Invoke")!;
-
-                if (invoker == null && method.ReturnType == finalSignature.ReturnType) return (TDelegate)Delegate.CreateDelegate(typeof(TDelegate), null, method);
 
                 var methodParameters = finalSignature.GetParameters();
                 var lambdaParameters = Array.ConvertAll(methodParameters, p => Expression.Parameter(p.ParameterType, p.Name));
-                var body = invoker?.Invoke(lambdaParameters) ?? Expression.Call(lambdaParameters[0], method, lambdaParameters.Skip(1));
-
-                if (body.Type != finalSignature.ReturnType)
-                {
-                    if (finalSignature.ReturnType.IsGenericType && finalSignature.ReturnType.GetGenericTypeDefinition() == typeof(Task<>))
-                    {
-                        // gRPC expects a Task<T>, and that isn't what we are returning; fake it
-
-                        // is it a ValueTask<T>?
-                        if (body.Type.IsGenericType && body.Type.GetGenericTypeDefinition() == typeof(ValueTask<>))
-                        {   // foo.AsTask()
-                            body = Expression.Call(body, "AsTask", null);
-                        }
-                        else
-                        {   // Task.FromResult(foo)
-                            body = Expression.Call(typeof(Task), nameof(Task.FromResult), finalSignature.ReturnType.GetGenericArguments(), body);
-                        }
-                    }
-                }
+                var body = invoker?.Invoke(method, lambdaParameters);
                 var lambda = Expression.Lambda<TDelegate>(body, lambdaParameters);
-                logger.Log(LogLevel.Warning, "mapped {0} via {1}", operationName, lambda);
+                logger.Log(LogLevel.Trace, "mapped {0} via {1}", operationName, lambda);
                 return lambda.Compile();
             }
 

@@ -5,6 +5,7 @@ using Grpc.Core;
 using ProtoBuf.Grpc;
 using ProtoBuf.Grpc.Internal;
 
+#pragma warning disable CS0618
 namespace SharedContract
 {
     public class AllOptionsClient : ClientBase, IAllOptions

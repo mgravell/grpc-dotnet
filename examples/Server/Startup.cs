@@ -116,6 +116,7 @@ namespace GRPCServer
                 endpoints.MapGrpcService<CounterService>();
                 // endpoints.MapGrpcService<GreeterService>();
                 endpoints.MapGrpcService<Server.CodeFirstGreeterService.MyService>();
+                endpoints.MapGrpcService<SharedContract.AllOptionsServer>();
                 endpoints.MapGrpcService<TicketerService>();
                 endpoints.MapGrpcService<CertifierService>();
                 endpoints.MapGrpcService<AggregatorService>();

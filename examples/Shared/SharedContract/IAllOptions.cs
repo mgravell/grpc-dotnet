@@ -2,9 +2,11 @@
 using ProtoBuf.Grpc;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.ServiceModel;
 
 namespace SharedContract
 {
+    [ServiceContract]
     interface IAllOptions
     {
         // google client patterns

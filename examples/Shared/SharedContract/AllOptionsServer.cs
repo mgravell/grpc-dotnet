@@ -4,36 +4,13 @@ using Grpc.Core;
 using ProtoBuf.Grpc;
 using System;
 using Grpc.AspNetCore.Server.Model;
-using System.Threading;
-using System.Runtime.CompilerServices;
+using ProtoBuf.Grpc.Internal;
+
+#pragma warning disable CS0618
 
 namespace SharedContract
 {
-    static class Helpers
-    {
-        public static async IAsyncEnumerable<T> AsAsyncEnumerable<T>(this IAsyncStreamReader<T> reader, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            using (reader)
-            {
-                while (await reader.MoveNext(cancellationToken))
-                {
-                    yield return reader.Current;
-                }
-            }
-        }
-
-        public static async Task WriteTo<T>(this IAsyncEnumerable<T> reader, IServerStreamWriter<T> writer, ServerCallContext context)
-        {
-            await using (var iter = reader.GetAsyncEnumerator(context.CancellationToken))
-            {
-                while (await iter.MoveNextAsync())
-                {
-                    await writer.WriteAsync(iter.Current);
-                }
-            }
-        }
-    }
-    class AllOptionsServer : IAllOptions
+    public class AllOptionsServer : IAllOptions
     {
         // the purpose of this type is to explore the server binding trees
         private static readonly ClientStreamingServerMethod<AllOptionsServer, HelloRequest, HelloReply> Server_ClientStreaming
@@ -61,19 +38,19 @@ namespace SharedContract
         HelloReply IAllOptions.Shared_BlockingUnary_NoContext(HelloRequest request) => throw new NotImplementedException();
 
         private static readonly DuplexStreamingServerMethod<AllOptionsServer, HelloRequest, HelloReply> Shared_Duplex_Context
-            = (service, request, response, context) => ((IAllOptions)service).Shared_Duplex_Context(request.AsAsyncEnumerable(context.CancellationToken), new CallContext(context)).WriteTo(response, context);
+            = (service, request, response, context) => ((IAllOptions)service).Shared_Duplex_Context(request.AsAsyncEnumerable(context.CancellationToken), new CallContext(context)).WriteTo(response, context.CancellationToken);
         IAsyncEnumerable<HelloReply> IAllOptions.Shared_Duplex_Context(IAsyncEnumerable<HelloRequest> request, CallContext context) => throw new NotImplementedException();
 
         private static readonly DuplexStreamingServerMethod<AllOptionsServer, HelloRequest, HelloReply> Shared_Duplex_NoContext
-            = (service, request, response, context) => ((IAllOptions)service).Shared_Duplex_NoContext(request.AsAsyncEnumerable(context.CancellationToken)).WriteTo(response, context);
+            = (service, request, response, context) => ((IAllOptions)service).Shared_Duplex_NoContext(request.AsAsyncEnumerable(context.CancellationToken)).WriteTo(response, context.CancellationToken);
         IAsyncEnumerable<HelloReply> IAllOptions.Shared_Duplex_NoContext(IAsyncEnumerable<HelloRequest> request) => throw new NotImplementedException();
 
         private static readonly ServerStreamingServerMethod<AllOptionsServer, HelloRequest, HelloReply> Shared_ServerStreaming_Context
-            = (service, request, response, context) => ((IAllOptions)service).Shared_ServerStreaming_Context(request, new CallContext(context)).WriteTo(response, context);
+            = (service, request, response, context) => ((IAllOptions)service).Shared_ServerStreaming_Context(request, new CallContext(context)).WriteTo(response, context.CancellationToken);
         IAsyncEnumerable<HelloReply> IAllOptions.Shared_ServerStreaming_Context(HelloRequest request, CallContext context) => throw new NotImplementedException();
 
         private static readonly ServerStreamingServerMethod<AllOptionsServer, HelloRequest, HelloReply> Shared_ServerStreaming_NoContext
-            = (service, request, response, context) => ((IAllOptions)service).Shared_ServerStreaming_NoContext(request).WriteTo(response, context);
+            = (service, request, response, context) => ((IAllOptions)service).Shared_ServerStreaming_NoContext(request).WriteTo(response, context.CancellationToken);
         IAsyncEnumerable<HelloReply> IAllOptions.Shared_ServerStreaming_NoContext(HelloRequest request) => throw new NotImplementedException();
 
         private static readonly ClientStreamingServerMethod<AllOptionsServer, HelloRequest, HelloReply> Shared_TaskClientStreaming_Context
@@ -84,7 +61,7 @@ namespace SharedContract
             = (service, request, context) => ((IAllOptions)service).Shared_TaskClientStreaming_NoContext(request.AsAsyncEnumerable(context.CancellationToken));
         Task<HelloReply> IAllOptions.Shared_TaskClientStreaming_NoContext(IAsyncEnumerable<HelloRequest> request) => throw new NotImplementedException();
 
-        private static readonly UnaryServerMethod<AllOptionsServer, HelloRequest, HelloReply> Shared_TaskUnary_Context
+        private static readonly UnaryServerMethod<AllOptionsServer, HelloRequest, HelloReply> siShared_TaskUnary_Context
             = (service, request, context) => ((IAllOptions)service).Shared_TaskUnary_Context(request, new CallContext(context));
         Task<HelloReply> IAllOptions.Shared_TaskUnary_Context(HelloRequest request, CallContext context) => throw new NotImplementedException();
 

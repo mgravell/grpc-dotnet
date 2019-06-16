@@ -3,6 +3,7 @@ using ProtoBuf.Grpc;
 using ProtoBuf.Grpc.Internal;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+#pragma warning disable CS0618
 namespace SharedContract
 {
     //this is approximately what we want to emit
