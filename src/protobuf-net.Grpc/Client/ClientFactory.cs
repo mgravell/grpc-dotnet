@@ -35,13 +35,45 @@ namespace ProtoBuf.Grpc.Client
     public static class ClientFactory
     {
         public static TService Create<TService>(HttpClient httpClient, ILoggerFactory? loggerFactory = null)
-            where TService : class
-            => ProxyCache<TService>.Create(httpClient, loggerFactory);
+            where TService : class => ProxyCache<TService>.Create(httpClient, loggerFactory);
+        public static TService Create<TService>(Channel channel)
+            where TService : class => ProxyCache<TService>.Create(channel);
+        public static TService Create<TService>(CallInvoker callInvoker)
+            where TService : class => ProxyCache<TService>.Create(callInvoker);
 
-        public static TService CreateService<TClient, TService>(HttpClient httpClient, ILoggerFactory? loggerFactory = null)
-                where TService : class
-                where TClient : ClientBase, TService
-            => GrpcClient.Create<TClient>(httpClient, loggerFactory);
+        internal readonly struct ProxyCache<TService> where TService : class
+        {
+            private static readonly ProxyCache<TService> s_factory = ProxyEmitter.CreateFactory<TService>();
+
+            public static TService Create(HttpClient httpClient, ILoggerFactory? loggerFactory) => s_factory._httpClient(httpClient, loggerFactory);
+            public static TService Create(CallInvoker callInvoker) => s_factory._callInvoker(callInvoker);
+            public static TService Create(Channel channel) => s_factory._channel(channel);
+
+            private readonly Func<HttpClient, ILoggerFactory?, TService> _httpClient;
+            private readonly Func<CallInvoker, TService> _callInvoker;
+            private readonly Func<Channel, TService> _channel;
+            // public readonly Func<ClientBaseConfiguration, TService> ClientBaseConfiguration;
+            
+            public ProxyCache(Type type)
+            {
+                if (!FindFactory(type, out _httpClient!)) _httpClient = (a, b) => throw new NotSupportedException();
+                if (!FindFactory(type, out _callInvoker!)) _callInvoker = a => throw new NotSupportedException();
+                if (!FindFactory(type, out _channel!)) _channel = a => throw new NotSupportedException();
+                // if (!FindFactory(type, out ClientBaseConfiguration!)) ClientBaseConfiguration = a => throw new NotSupportedException();
+            }
+            static bool FindFactory<T>(Type type, out T? field) where T : Delegate
+            {
+                field = default;
+                if (type == null) return false;
+                var invoke = typeof(T).GetMethod("Invoke");
+                if (invoke == null) return false;
+                var signature = Array.ConvertAll(invoke.GetParameters(), x => x.ParameterType);
+                var factory = type.GetMethod(ProxyEmitter.FactoryName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, signature, null);
+                if (factory == null) return false;
+                field = (T)Delegate.CreateDelegate(typeof(T), factory);
+                return true;
+            }
+        }
 
         // this **abstract** inheritance is just to get access to ClientBaseConfiguration
         // (without that, this could be a static class)
@@ -118,10 +150,20 @@ namespace ProtoBuf.Grpc.Client
                     il.Emit(OpCodes.Ldarga, index);
                 }
             }
+            private static void Ldarg(ILGenerator il, ushort index)
+            {
+                switch(index)
+                {
+                    case 0: il.Emit(OpCodes.Ldarg_0); break;
+                    case 1: il.Emit(OpCodes.Ldarg_1); break;
+                    case 2: il.Emit(OpCodes.Ldarg_2); break;
+                    case 3: il.Emit(OpCodes.Ldarg_3); break;
+                    case ushort x when x <= 255: il.Emit(OpCodes.Ldarg_S, (byte)x); break;
+                    default: il.Emit(OpCodes.Ldarg, index); break;
+                }
+            }
 
-
-
-            internal static Func<HttpClient, ILoggerFactory?, TService> CreateFactory<TService>()
+            internal static ProxyCache<TService> CreateFactory<TService>()
                where TService : class
             {
                 // front-load reflection discovery
@@ -147,13 +189,15 @@ namespace ProtoBuf.Grpc.Client
                     type.DefineDefaultConstructor(MethodAttributes.Private);
 
                     // public IFooProxy(CallInvoker callInvoker) : base(callInvoker) { }
-                    WritePassThruCtor<CallInvoker>(MethodAttributes.Public);
+                    var ctorCallInvoker = WritePassThruCtor<CallInvoker>(MethodAttributes.Public);
 
                     // public IFooProxy(Channel channel) : base(callIchannelnvoker) { }
-                    WritePassThruCtor<Channel>(MethodAttributes.Public);
+                    var ctorChannel = WritePassThruCtor<Channel>(MethodAttributes.Public);
 
                     // private IFooProxy(ClientBaseConfiguration configuration) : base(configuration) { }
-                    WritePassThruCtor<ClientBaseConfiguration>(MethodAttributes.Family);
+                    var ctorClientBaseConfig = WritePassThruCtor<ClientBaseConfiguration>(MethodAttributes.Family);
+
+                    // override ToString
                     {
                         var toString = type.DefineMethod(nameof(ToString), s_Object_ToString.Attributes, s_Object_ToString.CallingConvention,
                         typeof(string), Type.EmptyTypes);
@@ -240,34 +284,47 @@ namespace ProtoBuf.Grpc.Client
 
                     cctor.Emit(OpCodes.Ret); // end the type initializer (after creating all the field types)
 
-                    // return the factory method
-                    return (Func<HttpClient, ILoggerFactory?, TService>)Delegate.CreateDelegate(typeof(Func<HttpClient, ILoggerFactory?, TService>), null,
-                        typeof(ClientFactory).GetMethod(nameof(CreateService), BindingFlags.Public | BindingFlags.Static)!.MakeGenericMethod(new[] { type.CreateType(), typeof(TService) }));
+                    // write a factory method
+                    WriteFactory(new[] { typeof(HttpClient), typeof(ILoggerFactory) }, typeof(HttpClientCallInvoker), ctorCallInvoker);
+                    WriteFactory(new[] { typeof(CallInvoker) }, null, ctorCallInvoker);
+                    WriteFactory(new[] { typeof(Channel) }, null, ctorChannel);
+                    // WriteFactory(new[] { typeof(ClientBaseConfiguration) }, null, ctorClientBaseConfig);
 
-                    void WritePassThruCtor<T>(MethodAttributes accessibility)
+                    // return the factory
+                    return new ProxyCache<TService>(type.CreateType());
+
+                    void WriteFactory(Type[] signature, Type? via, ConstructorBuilder? ctor)
+                    {
+                        if (ctor == null) return;
+                        ConstructorInfo? viaCtor = via?.GetConstructor(signature);
+                        if (via != null && viaCtor == null) return; // nope!
+
+                        var factory = type.DefineMethod(FactoryName, MethodAttributes.Public | MethodAttributes.Static, typeof(TService), signature);
+                        var il = factory.GetILGenerator();
+                        for (ushort i = 0; i < signature.Length; i++)
+                            Ldarg(il, i);
+                        if (viaCtor != null) il.Emit(OpCodes.Newobj, viaCtor);
+                        il.Emit(OpCodes.Newobj, ctor);
+                        il.Emit(OpCodes.Ret);
+                    }
+
+                    ConstructorBuilder? WritePassThruCtor<T>(MethodAttributes accessibility)
                     {
                         var signature = new[] { typeof(T) };
                         var baseCtor = baseType.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, signature, null);
-                        if (baseCtor != null)
-                        {
-                            var ctor = type.DefineConstructor(accessibility, CallingConventions.HasThis, signature);
-                            var il = ctor.GetILGenerator();
-                            il.Emit(OpCodes.Ldarg_0);
-                            il.Emit(OpCodes.Ldarg_1);
-                            il.Emit(OpCodes.Call, baseCtor);
-                            il.Emit(OpCodes.Ret);
-                        }
+                        if (baseCtor == null) return null;
+                        
+                        var ctor = type.DefineConstructor(accessibility, CallingConventions.HasThis, signature);
+                        var il = ctor.GetILGenerator();
+                        il.Emit(OpCodes.Ldarg_0);
+                        il.Emit(OpCodes.Ldarg_1);
+                        il.Emit(OpCodes.Call, baseCtor);
+                        il.Emit(OpCodes.Ret);
+                        return ctor;
                     }
                 }
-
             }
-        }
-
-        internal static class ProxyCache<TService>
-           where TService : class
-        {
-            public static TService Create(HttpClient httpClient, ILoggerFactory? loggerFactory) => s_ctor(httpClient, loggerFactory);
-            private static readonly Func<HttpClient, ILoggerFactory?, TService> s_ctor = ProxyEmitter.CreateFactory<TService>();
+            internal const string FactoryName = "Create";
         }
     }
 }
