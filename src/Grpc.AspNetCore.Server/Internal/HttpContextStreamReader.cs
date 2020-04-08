@@ -47,7 +47,7 @@ namespace Grpc.AspNetCore.Server.Internal
 
         public Task<bool> MoveNext(CancellationToken cancellationToken)
         {
-            async Task<bool> MoveNextAsync(ValueTask<TRequest?> readStreamTask)
+            async Task<bool> MoveNextAsync(ValueTask<(TRequest Value, bool HasValue)> readStreamTask)
             {
                 return ProcessPayload(await readStreamTask);
             }
@@ -66,17 +66,11 @@ namespace Grpc.AspNetCore.Server.Internal
             return ProcessPayload(request.Result) ? True : False;
         }
 
-        private bool ProcessPayload(TRequest? request)
+        private bool ProcessPayload((TRequest Value, bool HasValue) request)
         {
             // Stream is complete
-            if (request == null)
-            {
-                Current = null;
-                return false;
-            }
-
-            Current = request;
-            return true;
+            Current = request.Value;
+            return request.HasValue;
         }
     }
 }

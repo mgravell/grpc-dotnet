@@ -101,7 +101,7 @@ namespace Grpc.Tests.Shared
 
             var message = await pipeReader.ReadStreamMessageAsync<T>(serverCallContext, Deserialize<T>).AsTask().DefaultTimeout();
 
-            return message;
+            return message.Value;
         }
 
         public static void WriteMessage<T>(Stream stream, T message, string? compressionEncoding = null, List<ICompressionProvider>? compressionProviders = null, Func<PipeWriter, PipeWriter>? pipeWriterWrapper = null) where T : class, IMessage

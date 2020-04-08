@@ -501,7 +501,7 @@ namespace Grpc.Net.Client.Internal
                             // Read entire response body immediately and read status from trailers
                             // Trailers are only available once the response body had been read
                             var responseStream = await HttpResponse.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                            var message = await responseStream.ReadMessageAsync(
+                            var tuple = await responseStream.ReadMessageAsync(
                                 Logger,
                                 Method.ResponseMarshaller.ContextualDeserializer,
                                 GrpcProtocolHelpers.GetGrpcEncoding(HttpResponse),
@@ -512,7 +512,7 @@ namespace Grpc.Net.Client.Internal
                             status = GrpcProtocolHelpers.GetResponseStatus(HttpResponse);
                             FinishResponseAndCleanUp(status.Value);
 
-                            if (message == null)
+                            if (!tuple.HasValue)
                             {
                                 GrpcCallLog.MessageNotReturned(Logger);
 
@@ -527,7 +527,7 @@ namespace Grpc.Net.Client.Internal
 
                                 if (status.Value.StatusCode == StatusCode.OK)
                                 {
-                                    _responseTcs.TrySetResult(message);
+                                    _responseTcs.TrySetResult(tuple.Value!);
                                 }
                                 else
                                 {
@@ -881,7 +881,7 @@ namespace Grpc.Net.Client.Internal
                 callOptions);
         }
 
-        internal ValueTask<TResponse?> ReadMessageAsync(
+        internal ValueTask<(TResponse? Value, bool HasValue)> ReadMessageAsync(
             Stream responseStream,
             string grpcEncoding,
             bool singleMessage,

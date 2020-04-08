@@ -254,7 +254,7 @@ namespace Grpc.AspNetCore.Server.Internal
         /// <param name="deserializer">Message deserializer.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>Complete message data or null if the stream is complete.</returns>
-        public static async ValueTask<T?> ReadStreamMessageAsync<T>(this PipeReader input, HttpContextServerCallContext serverCallContext, Func<DeserializationContext, T> deserializer, CancellationToken cancellationToken = default)
+        public static async ValueTask<(T Value, bool HasValue)> ReadStreamMessageAsync<T>(this PipeReader input, HttpContextServerCallContext serverCallContext, Func<DeserializationContext, T> deserializer, CancellationToken cancellationToken = default)
             where T : class
         {
             var logger = serverCallContext.Logger;
@@ -292,7 +292,7 @@ namespace Grpc.AspNetCore.Server.Internal
 
                                 GrpcEventSource.Log.MessageReceived();
 
-                                return request;
+                                return (request, true);
                             }
                         }
 

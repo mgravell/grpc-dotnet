@@ -92,44 +92,50 @@ namespace Grpc.AspNetCore.Server.Tests.Web
             var pipeReader = new TestPipeReader(new Base64PipeReader(PipeReader.Create(ms)));
 
             // Act 1
-            var messageData = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
+            (var messageData, var hasValue) = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
 
             // Assert 1
+            Assert.True(hasValue);
             Assert.AreEqual("test", messageData!.Message);
             Assert.AreEqual(11, pipeReader.Consumed);
 
             // Act 2
-            messageData = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
+            (messageData, hasValue) = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
 
             // Assert 2
+            Assert.True(hasValue);
             Assert.AreEqual("test", messageData!.Message);
             Assert.AreEqual(22, pipeReader.Consumed);
 
             // Act 3
-            messageData = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
+            (messageData, hasValue) = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
 
             // Assert 3
+            Assert.True(hasValue);
             Assert.AreEqual("test", messageData!.Message);
             Assert.AreEqual(33, pipeReader.Consumed);
 
             // Act 4
-            messageData = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
+            (messageData, hasValue) = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
 
             // Assert 4
+            Assert.True(hasValue);
             Assert.AreEqual("test", messageData!.Message);
             Assert.AreEqual(44, pipeReader.Consumed);
 
             // Act 5
-            messageData = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
+            (messageData, hasValue) = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
 
             // Assert 5
+            Assert.True(hasValue);
             Assert.AreEqual("test", messageData!.Message);
             Assert.AreEqual(55, pipeReader.Consumed);
 
             // Act 6
-            messageData = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
+            (messageData, hasValue) = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), MarshallerEchoResponse.ContextualDeserializer);
 
             // Assert 6
+            Assert.False(hasValue);
             Assert.IsNull(messageData);
         }
 

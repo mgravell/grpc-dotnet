@@ -112,7 +112,7 @@ namespace Grpc.Net.Client.Tests
             await call.RequestStream.CompleteAsync().DefaultTimeout();
 
             var requestContent = await streamTask.DefaultTimeout();
-            var requestMessage = await requestContent.ReadMessageAsync(
+            (var requestMessage, var hasValue) = await requestContent.ReadMessageAsync(
                 NullLogger.Instance,
                 ClientTestHelpers.ServiceMethod.RequestMarshaller.ContextualDeserializer,
                 GrpcProtocolConstants.IdentityGrpcEncoding,
@@ -120,8 +120,9 @@ namespace Grpc.Net.Client.Tests
                 GrpcProtocolConstants.DefaultCompressionProviders,
                 singleMessage: false,
                 CancellationToken.None).AsTask().DefaultTimeout();
+            Assert.True(hasValue);
             Assert.AreEqual("1", requestMessage!.Name);
-            requestMessage = await requestContent.ReadMessageAsync(
+            (requestMessage, hasValue) = await requestContent.ReadMessageAsync(
                 NullLogger.Instance,
                 ClientTestHelpers.ServiceMethod.RequestMarshaller.ContextualDeserializer,
                 GrpcProtocolConstants.IdentityGrpcEncoding,
@@ -129,6 +130,7 @@ namespace Grpc.Net.Client.Tests
                 GrpcProtocolConstants.DefaultCompressionProviders,
                 singleMessage: false,
                 CancellationToken.None).AsTask().DefaultTimeout();
+            Assert.True(hasValue);
             Assert.AreEqual("2", requestMessage!.Name);
 
             var responseMessage = await responseTask.DefaultTimeout();

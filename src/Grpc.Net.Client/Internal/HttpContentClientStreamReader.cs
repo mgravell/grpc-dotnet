@@ -163,12 +163,13 @@ namespace Grpc.Net.Client.Internal
 
                 Debug.Assert(_grpcEncoding != null, "Encoding should have been calculated from response.");
 
-                Current = await _call.ReadMessageAsync(
+                var tuple = await _call.ReadMessageAsync(
                     _responseStream,
                     _grpcEncoding,
                     singleMessage: false,
                     cancellationToken).ConfigureAwait(false);
-                if (Current == null)
+                Current = tuple.Value;
+                if (!tuple.HasValue)
                 {
                     // No more content in response so report status to call.
                     // The call will handle finishing the response.

@@ -84,7 +84,7 @@ namespace Grpc.Net.Client
             return ((int)length, compressed);
         }
 
-        public static async ValueTask<TResponse?> ReadMessageAsync<TResponse>(
+        public static async ValueTask<(TResponse? Value, bool HasValue)> ReadMessageAsync<TResponse>(
             this Stream responseStream,
             ILogger logger,
             Func<DeserializationContext, TResponse> deserializer,
@@ -183,7 +183,7 @@ namespace Grpc.Net.Client
                 }
 
                 GrpcCallLog.ReceivedMessage(logger);
-                return message;
+                return (message, true);
             }
             catch (Exception ex) when (!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
             {

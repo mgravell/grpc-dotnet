@@ -187,7 +187,8 @@ namespace Grpc.AspNetCore.Server.Tests
             var pipeReader = PipeReader.Create(ms);
 
             // Act
-            var messageData = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), TestDataMarshaller.ContextualDeserializer);
+            (var messageData, var hasValue) = await pipeReader.ReadStreamMessageAsync(HttpContextServerCallContextHelper.CreateServerCallContext(), TestDataMarshaller.ContextualDeserializer);
+            Assert.True(hasValue);
 
             // Assert
             Assert.AreEqual(449, messageData!.Span.Length);
@@ -212,23 +213,26 @@ namespace Grpc.AspNetCore.Server.Tests
             var testServerCallContext = HttpContextServerCallContextHelper.CreateServerCallContext();
 
             // Act 1
-            var messageData1 = await pipeReader.ReadStreamMessageAsync(testServerCallContext, TestDataMarshaller.ContextualDeserializer);
+            (var messageData1, var hasValue1) = await pipeReader.ReadStreamMessageAsync(testServerCallContext, TestDataMarshaller.ContextualDeserializer);
 
             // Assert 1
+            Assert.True(hasValue1, nameof(hasValue1));
             Assert.AreEqual(0, messageData1!.Span.Length);
             Assert.AreEqual(emptyMessage.Length, pipeReader.Consumed);
 
             // Act 2
-            var messageData2 = await pipeReader.ReadStreamMessageAsync(testServerCallContext, TestDataMarshaller.ContextualDeserializer);
+            (var messageData2, var hasValue2) = await pipeReader.ReadStreamMessageAsync(testServerCallContext, TestDataMarshaller.ContextualDeserializer);
 
             // Assert 2
+            Assert.True(hasValue2, nameof(hasValue2));
             Assert.AreEqual(0, messageData2!.Span.Length);
             Assert.AreEqual(emptyMessage.Length * 2, pipeReader.Consumed);
 
             // Act 3
-            var messageData3 = await pipeReader.ReadStreamMessageAsync(testServerCallContext, TestDataMarshaller.ContextualDeserializer);
+            (var messageData3, var hasValue3) = await pipeReader.ReadStreamMessageAsync(testServerCallContext, TestDataMarshaller.ContextualDeserializer);
 
             // Assert 3
+            Assert.False(hasValue3, nameof(hasValue3));
             Assert.IsNull(messageData3);
             Assert.AreEqual(emptyMessage.Length * 2, pipeReader.Consumed);
         }
@@ -265,7 +269,9 @@ namespace Grpc.AspNetCore.Server.Tests
             await requestStream.AddDataAndWait(emptyMessage).DefaultTimeout();
 
             // Assert 1
-            Assert.AreEqual(0, (await messageData1Task.DefaultTimeout())!.Span.Length);
+            var result = await messageData1Task.DefaultTimeout();
+            Assert.True(result.HasValue);
+            Assert.AreEqual(0, result.Value.Span.Length);
             Assert.AreEqual(5, pipeReader.Consumed);
             Assert.AreEqual(5, pipeReader.Examined);
 
@@ -274,7 +280,9 @@ namespace Grpc.AspNetCore.Server.Tests
             await requestStream.AddDataAndWait(followingMessage).DefaultTimeout();
 
             // Assert 2
-            Assert.AreEqual(0, (await messageData2Task.DefaultTimeout())!.Span.Length);
+            result = await messageData2Task.DefaultTimeout();
+            Assert.True(result.HasValue);
+            Assert.AreEqual(0, result.Value.Span.Length);
             Assert.AreEqual(10, pipeReader.Consumed);
             Assert.AreEqual(10, pipeReader.Examined);
 

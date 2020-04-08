@@ -37,7 +37,7 @@ namespace Grpc.Net.Client.Tests
         {
             var requestStream = await request.Content.ReadAsStreamAsync();
 
-            var helloRequest = await StreamExtensions.ReadMessageAsync(
+            (var helloRequest, var hasValue) = await StreamExtensions.ReadMessageAsync(
                 requestStream,
                 NullLogger.Instance,
                 ClientTestHelpers.ServiceMethod.RequestMarshaller.ContextualDeserializer,
@@ -47,6 +47,7 @@ namespace Grpc.Net.Client.Tests
                 singleMessage: true,
                 CancellationToken.None);
 
+            Assert.True(hasValue);
             var reply = new HelloReply
             {
                 Message = "Hello " + helloRequest!.Name
